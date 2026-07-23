@@ -4,6 +4,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { runPipeline, type PipelineDeps } from "./lib/pipeline.js";
 import { runActor } from "./lib/apify.js";
 import { extractTickers, videoWrap, marketRecap } from "./lib/claude.js";
@@ -97,6 +98,26 @@ export const runNow = onCall({ secrets: [apifyToken, anthropicKey, finnhubKey, f
 });
 
 export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, response) => {
+  const authHeader = request.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    response.status(401).json({ error: "missing or malformed Authorization header" });
+    return;
+  }
+  const idToken = authHeader.slice("Bearer ".length);
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(idToken);
+  } catch {
+    response.status(401).json({ error: "invalid token" });
+    return;
+  }
+
+  if (decoded.uid !== OWNER_UID) {
+    response.status(403).json({ error: "not authorized" });
+    return;
+  }
+
   const sym = String(request.query.sym || "");
   if (!sym) {
     response.status(400).json({ error: "missing sym" });
