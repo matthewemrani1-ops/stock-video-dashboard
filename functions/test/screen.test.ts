@@ -33,4 +33,14 @@ describe("screenStock", () => {
     const result = screenStock({ pe: 20, marketCap: 1000, week52High: 200, week52Low: 100, beta: 1.2 }, null);
     expect(result?.total).toBe(2);
   });
+
+  it("returns Watch when exactly 1 of 3 checks passes", () => {
+    const result = screenStock(
+      { pe: 100, marketCap: 1000, week52High: 200, week52Low: 100, beta: 3.5 },
+      { buy: 10, hold: 1, sell: 1, period: "2026-07" }
+    );
+    expect(result?.verdict).toBe("Watch");
+    expect(result?.passed).toBe(1);
+    expect(result?.total).toBe(3);
+  });
 });

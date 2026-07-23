@@ -10,7 +10,7 @@ export function rankMentions(extractions: (Extraction & { who: string })[]): Ran
     if (!mentions[sym].company && it.company) mentions[sym].company = it.company;
     mentions[sym].takes.push({
       who: it.who,
-      view: it.view || "mention",
+      view: ((it.view || "mention") as string).toLowerCase() as Take["view"],
       buy: it.buyLevel || "",
       sell: it.sellLevel || "",
       recap: it.recap || "",
