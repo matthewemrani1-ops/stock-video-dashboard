@@ -15,6 +15,11 @@ describe("getQuote", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({}) }));
     expect(await getQuote("AAPL", "k")).toBeNull();
   });
+
+  it("returns null when price is 0 (unrecognized symbol)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ c: 0, dp: 0 }) }));
+    expect(await getQuote("INVALID", "k")).toBeNull();
+  });
 });
 
 describe("getFundamentals", () => {
