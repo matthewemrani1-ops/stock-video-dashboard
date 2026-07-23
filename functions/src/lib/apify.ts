@@ -16,14 +16,14 @@ export async function runActor(
     body: JSON.stringify(input),
   });
   if (!startRes.ok) {
-    let msg: string | number = startRes.status;
+    let msg = String(startRes.status);
     try {
       const errBody = await startRes.json();
       msg += " — " + (errBody?.error?.message || JSON.stringify(errBody));
     } catch {
       // ignore body parse failure, keep status-only message
     }
-    throw new Error(String(msg));
+    throw new Error(msg);
   }
   const run = ((await startRes.json()) as { data: ApifyRunData }).data;
   const runId = run.id;
