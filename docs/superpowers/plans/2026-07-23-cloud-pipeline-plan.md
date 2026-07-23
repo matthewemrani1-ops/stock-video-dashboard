@@ -1408,6 +1408,36 @@ describe("runPipeline", () => {
     expect(doc.status).toBe("complete");
     expect(doc.fred).toBeUndefined();
   });
+
+  it("filters out reels not posted on input.targetDate", async () => {
+    const onDate = new Date(input.targetDate);
+    const offDate = new Date(input.targetDate);
+    offDate.setDate(offDate.getDate() - 3);
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue([
+        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: onDate.getTime() },
+        { transcript: "MSFT is a solid buy", url: "https://ig.com/p/2", pageName: "trader1", timestamp: offDate.getTime() },
+      ]),
+      extractTickers: vi.fn().mockImplementation(async (text: string) => {
+        if (text.includes("AAPL")) {
+          return [{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }];
+        }
+        return [{ ticker: "MSFT", company: "Microsoft", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }];
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers.map((r) => r.sym)).toEqual(["AAPL"]);
+  });
+
+  it("treats a non-array runActor response as an empty reel list instead of throwing", async () => {
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue(null) as unknown as PipelineDeps["runActor"],
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers).toEqual([]);
+  });
 });
 ```
 
@@ -1456,6 +1486,9 @@ interface ReelLike {
   url?: string;
   pageName?: string;
   timestamp?: number;
+  // Apify's raw scrape output isn't strictly typed, and the post-date candidate
+  // fields below vary by actor/source — accept arbitrary extra fields.
+  [key: string]: unknown;
 }
 
 function getText(v: ReelLike): string {
@@ -1464,6 +1497,46 @@ function getText(v: ReelLike): string {
 
 function getAuthor(v: ReelLike): string {
   return v.pageName || "Unknown account";
+}
+
+const TIMESTAMP_KEYS = [
+  "timestamp",
+  "creationTime",
+  "createdTime",
+  "taken_at",
+  "takenAt",
+  "date_posted",
+  "publishedAt",
+  "published_at",
+  "date",
+  "time",
+  "created_at",
+];
+
+// prototype: ~/Downloads/stock-video-dashboard_23.html:448-453
+function pick(obj: ReelLike | null | undefined, keys: string[]): unknown {
+  for (const k of keys) {
+    if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+  }
+  return null;
+}
+
+// prototype: ~/Downloads/stock-video-dashboard_23.html:454-462
+function getTimestamp(v: ReelLike): number | null {
+  const t = pick(v, TIMESTAMP_KEYS);
+  if (t === null) return null;
+  if (typeof t === "number") return t < 2e10 ? t * 1000 : t;
+  const n = Number(t);
+  if (!isNaN(n) && String(t).trim() !== "") return n < 2e10 ? n * 1000 : n;
+  const d = Date.parse(String(t));
+  return isNaN(d) ? null : d;
+}
+
+// prototype: ~/Downloads/stock-video-dashboard_23.html:463-467
+function isOnDate(ms: number | null, target: Date): boolean {
+  if (ms === null) return true; // no timestamp field found -> don't exclude it, matches source's permissive fallback
+  const d = new Date(ms);
+  return d.getFullYear() === target.getFullYear() && d.getMonth() === target.getMonth() && d.getDate() === target.getDate();
 }
 
 async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): Promise<DigestDoc["fred"] | undefined> {
@@ -1498,7 +1571,9 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
   let reels: ReelLike[];
   try {
     const urlList = input.trackedHandles.map((u) => u.trim().replace(/^@/, "")).filter(Boolean);
-    reels = (await deps.runActor(secrets.actorId, secrets.apifyToken, { username: urlList, resultsLimit: 5, includeTranscript: true })) as ReelLike[];
+    const rawReels = await deps.runActor(secrets.actorId, secrets.apifyToken, { username: urlList, resultsLimit: 5, includeTranscript: true });
+    reels = Array.isArray(rawReels) ? (rawReels as ReelLike[]) : [];
+    reels = reels.filter((v) => isOnDate(getTimestamp(v), input.targetDate));
   } catch (e) {
     return {
       status: "error",
@@ -1601,7 +1676,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
 ```bash
 cd functions && npx vitest run test/pipeline.test.ts
 ```
-Expected: 5 tests, PASS.
+Expected: 7 tests, PASS.
 
 - [ ] **Step 5: Run the full backend test suite**
 
