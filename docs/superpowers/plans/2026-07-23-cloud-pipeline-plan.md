@@ -1761,6 +1761,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { runPipeline, type PipelineDeps } from "./lib/pipeline.js";
 import { runActor } from "./lib/apify.js";
 import { extractTickers, videoWrap, marketRecap } from "./lib/claude.js";
@@ -1854,6 +1855,26 @@ export const runNow = onCall({ secrets: [apifyToken, anthropicKey, finnhubKey, f
 });
 
 export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, response) => {
+  const authHeader = request.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    response.status(401).json({ error: "missing or malformed Authorization header" });
+    return;
+  }
+  const idToken = authHeader.slice("Bearer ".length);
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(idToken);
+  } catch {
+    response.status(401).json({ error: "invalid token" });
+    return;
+  }
+
+  if (decoded.uid !== OWNER_UID) {
+    response.status(403).json({ error: "not authorized" });
+    return;
+  }
+
   const sym = String(request.query.sym || "");
   if (!sym) {
     response.status(400).json({ error: "missing sym" });
@@ -2122,7 +2143,7 @@ Copy the `<style>` block and the results-container markup from `~/Downloads/stoc
 
 ```js
 import { doc, onSnapshot, httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { db, functions, FUNCTIONS_BASE_URL } from "./firebase-init.js";
+import { db, functions, auth, FUNCTIONS_BASE_URL } from "./firebase-init.js";
 
 const INDEX_PROXIES = [
   { sym: "SPY", label: "S&P 500" },
@@ -2259,10 +2280,14 @@ export function watchDate(dateKey) {
 async function loadStrip(list, elId) {
   const el = document.getElementById(elId);
   if (!el) return;
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) return; // not signed in yet (login gate hasn't resolved) — skip this cycle
   const cards = await Promise.all(
     list.map(async (idx) => {
       try {
-        const r = await fetch(`${FUNCTIONS_BASE_URL}/liveQuote?sym=${idx.sym}`);
+        const r = await fetch(`${FUNCTIONS_BASE_URL}/liveQuote?sym=${idx.sym}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
         const q = await r.json();
         if (q.price == null) return "";
         const up = q.changePct >= 0;
