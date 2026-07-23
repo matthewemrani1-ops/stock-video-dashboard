@@ -78,4 +78,34 @@ describe("runPipeline", () => {
     expect(doc.status).toBe("complete");
     expect(doc.fred).toBeUndefined();
   });
+
+  it("filters out reels not posted on input.targetDate", async () => {
+    const onDate = new Date(input.targetDate);
+    const offDate = new Date(input.targetDate);
+    offDate.setDate(offDate.getDate() - 3);
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue([
+        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: onDate.getTime() },
+        { transcript: "MSFT is a solid buy", url: "https://ig.com/p/2", pageName: "trader1", timestamp: offDate.getTime() },
+      ]),
+      extractTickers: vi.fn().mockImplementation(async (text: string) => {
+        if (text.includes("AAPL")) {
+          return [{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }];
+        }
+        return [{ ticker: "MSFT", company: "Microsoft", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }];
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers.map((r) => r.sym)).toEqual(["AAPL"]);
+  });
+
+  it("treats a non-array runActor response as an empty reel list instead of throwing", async () => {
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue(null) as unknown as PipelineDeps["runActor"],
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers).toEqual([]);
+  });
 });
