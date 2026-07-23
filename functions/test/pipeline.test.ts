@@ -1,0 +1,81 @@
+import { describe, it, expect, vi } from "vitest";
+import { runPipeline, type PipelineDeps, type PipelineInput } from "../src/lib/pipeline.js";
+
+function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
+  return {
+    runActor: vi.fn().mockResolvedValue([{ transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: Date.now() }]),
+    extractTickers: vi.fn().mockResolvedValue([{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "bullish", quote: "" }]),
+    videoWrap: vi.fn().mockResolvedValue("wrap text"),
+    marketRecap: vi.fn().mockResolvedValue("recap text"),
+    getQuote: vi.fn().mockResolvedValue({ price: 200, changePct: 1 }),
+    getFundamentals: vi.fn().mockResolvedValue({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1 }),
+    getProfile: vi.fn().mockResolvedValue({ industry: "Tech", name: "Apple", weburl: "https://apple.com" }),
+    getAnalystConsensus: vi.fn().mockResolvedValue({ buy: 10, hold: 2, sell: 1, period: "2026-07" }),
+    getGeneralNews: vi.fn().mockResolvedValue([{ headline: "Fed holds" }]),
+    fredLatest: vi.fn().mockResolvedValue({ value: 4.3, date: "2026-07-20" }),
+    fredYoY: vi.fn().mockResolvedValue({ value: 2.9, date: "2026-07-20" }),
+    fredWithPrior: vi.fn().mockResolvedValue({ value: 220000, prior: 215000, date: "2026-07-20" }),
+    ...overrides,
+  };
+}
+
+const input: PipelineInput = {
+  dateLabel: "Jul 23, 2026",
+  targetDate: new Date("2026-07-23T12:00:00"),
+  trackedHandles: ["trader1"],
+  topN: 15,
+  secrets: { apifyToken: "at", actorId: "apify/instagram-reel-scraper", aiKey: "ak", model: "claude-haiku-4-5-20251001", priceKey: "pk", fredKey: "fk" },
+};
+
+describe("runPipeline", () => {
+  it("produces a complete digest on the happy path", async () => {
+    const doc = await runPipeline(input, baseDeps());
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers).toHaveLength(1);
+    expect(doc.rankedTickers[0].sym).toBe("AAPL");
+    expect(doc.rankedTickers[0].fundamentals).toEqual({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1 });
+    expect(doc.screen.AAPL.verdict).toBe("Pass");
+    expect(doc.videoWrap).toBe("wrap text");
+    expect(doc.marketRecap).toBe("recap text");
+    expect(doc.skippedReelCount).toBe(0);
+  });
+
+  it("sets status error and does not throw when Apify fails", async () => {
+    const deps = baseDeps({ runActor: vi.fn().mockRejectedValue(new Error("Apify 401 — bad token")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("error");
+    expect(doc.errorMessage).toContain("bad token");
+    expect(doc.rankedTickers).toEqual([]);
+  });
+
+  it("skips a reel whose extraction fails and keeps going", async () => {
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue([
+        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: Date.now() },
+        { transcript: "NVDA looks strong", url: "https://ig.com/p/2", pageName: "trader1", timestamp: Date.now() },
+      ]),
+      extractTickers: vi
+        .fn()
+        .mockResolvedValueOnce([{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }])
+        .mockRejectedValueOnce(new Error("AI 500")),
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.skippedReelCount).toBe(1);
+    expect(doc.rankedTickers.map((r) => r.sym)).toEqual(["AAPL"]);
+  });
+
+  it("marks a ticker's fundamentals unavailable when Finnhub fails for it, without failing the run", async () => {
+    const deps = baseDeps({ getFundamentals: vi.fn().mockRejectedValue(new Error("Finnhub 429")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers[0].fundamentals).toBeUndefined();
+  });
+
+  it("leaves fred undefined when FRED calls fail, without failing the run", async () => {
+    const deps = baseDeps({ fredLatest: vi.fn().mockRejectedValue(new Error("FRED 500")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.fred).toBeUndefined();
+  });
+});
