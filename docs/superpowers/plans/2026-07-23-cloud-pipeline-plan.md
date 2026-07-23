@@ -1075,7 +1075,7 @@ const BASE = "https://finnhub.io/api/v1";
 export async function getQuote(sym: string, key: string): Promise<{ price: number; changePct: number } | null> {
   const r = await fetch(`${BASE}/quote?symbol=${sym}&token=${encodeURIComponent(key)}`);
   const q = (await r.json()) as { c?: number; dp?: number };
-  if (!q || q.c == null) return null;
+  if (!q || !q.c) return null;
   return { price: q.c, changePct: q.dp ?? 0 };
 }
 
