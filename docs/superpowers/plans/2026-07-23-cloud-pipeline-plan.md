@@ -1875,6 +1875,18 @@ export const runNow = onCall({ secrets: [apifyToken, anthropicKey, finnhubKey, f
 });
 
 export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, response) => {
+  // Browsers preflight cross-origin requests carrying an Authorization header
+  // with an OPTIONS request that never includes that header. CORS itself
+  // isn't the security boundary here (the ID-token check below is), so it's
+  // safe to answer preflights from any origin.
+  response.set("Access-Control-Allow-Origin", "*");
+  response.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.set("Access-Control-Allow-Headers", "Authorization");
+  if (request.method === "OPTIONS") {
+    response.status(204).send("");
+    return;
+  }
+
   const authHeader = request.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     response.status(401).json({ error: "missing or malformed Authorization header" });
