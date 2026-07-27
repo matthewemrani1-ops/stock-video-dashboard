@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { extractTickers, videoWrap, marketRecap } from "../src/lib/claude.js";
+import { extractTickers, videoWrap, marketRecap, marketHealth } from "../src/lib/claude.js";
 
 const cfg = { apiKey: "key123", model: "claude-haiku-4-5-20251001" };
 
@@ -109,6 +109,60 @@ describe("marketRecap", () => {
 1. A 2-3 sentence summary of the day's key market news and themes.
 2. A 1-2 sentence read on sentiment heading into the next trading day, based on this news.
 Plain text, no headers, no markdown, 2 short paragraphs max. Do not give buy/sell advice.`);
+    expect(body.max_tokens).toBe(400);
+    expect(body.model).toBe("claude-haiku-4-5-20251001");
+  });
+});
+
+describe("marketHealth", () => {
+  const indexAndMacro = [
+    { label: "S&P 500", price: 739.72, changePct: 0.11 },
+    { label: "Volatility (VIX proxy)", price: 21.29, changePct: -0.7 },
+  ];
+  const fred = [{ label: "Unemployment Rate", value: 4.2, note: "%" }];
+
+  it("returns the summary text from the response", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "Markets look calm." }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const text = await marketHealth(indexAndMacro, fred, cfg);
+    expect(text).toBe("Markets look calm.");
+  });
+
+  it("builds the digest from index/macro quotes and FRED indicators, with no date prefix", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await marketHealth(indexAndMacro, fred, cfg);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe("S&P 500: $739.72 (+0.11% today)\nVolatility (VIX proxy): $21.29 (-0.70% today)\nUnemployment Rate: 4.20 (%)");
+  });
+
+  it("omits the FRED lines entirely when there's no FRED data", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await marketHealth(indexAndMacro, undefined, cfg);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe("S&P 500: $739.72 (+0.11% today)\nVolatility (VIX proxy): $21.29 (-0.70% today)");
+  });
+
+  it("sends the correct system prompt, max_tokens, and model in the request body", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await marketHealth(indexAndMacro, fred, cfg);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+
+    expect(body.system).toBe(`You are explaining market health indicators on a personal dashboard for someone who is not a professional trader. Given today's readings for major indices, macro proxy ETFs (VIXY as a volatility/fear proxy, TLT as long Treasuries — rises when investors seek safety, HYG as high-yield credit — falls when credit stress rises, UUP as the dollar index), and where available: the 10Y-2Y Treasury yield spread (negative/inverted has historically preceded recessions), the unemployment rate, the Fed funds rate, CPI inflation (year-over-year, above ~3% is elevated vs. the Fed's ~2% target), initial jobless claims (a fast-moving weekly labor market signal — rising claims can signal labor weakness), and industrial production (year-over-year, negative = manufacturing contraction), write:
+1. A 2-3 sentence plain-English read on what today's levels suggest about market mood and valuation (risk-on bull conditions vs. risk-off/recession-warning conditions).
+2. A short "what to watch for" note: 2-3 concrete signs someone should look for in these same indicators if conditions were shifting toward a recession, versus signs of a healthy bull market.
+Plain text, no headers, no markdown, 2 short paragraphs max. Be educational, not alarmist. Do not give investment advice.`);
     expect(body.max_tokens).toBe(400);
     expect(body.model).toBe("claude-haiku-4-5-20251001");
   });

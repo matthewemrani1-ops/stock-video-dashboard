@@ -70,6 +70,7 @@ export interface DigestDoc {
   screen: Record<string, ScreenResult>;
   videoWrap?: string;
   marketRecap?: string;
+  marketHealth?: string;
   fred?: { label: string; value: number; note: string }[];
   skippedReelCount: number;
   startedAt: number;

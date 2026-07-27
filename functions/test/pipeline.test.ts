@@ -7,6 +7,7 @@ function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
     extractTickers: vi.fn().mockResolvedValue([{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "bullish", quote: "" }]),
     videoWrap: vi.fn().mockResolvedValue("wrap text"),
     marketRecap: vi.fn().mockResolvedValue("recap text"),
+    marketHealth: vi.fn().mockResolvedValue("health text"),
     getQuote: vi.fn().mockResolvedValue({ price: 200, changePct: 1 }),
     getFundamentals: vi.fn().mockResolvedValue({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1 }),
     getProfile: vi.fn().mockResolvedValue({ industry: "Tech", name: "Apple", weburl: "https://apple.com" }),
@@ -37,6 +38,7 @@ describe("runPipeline", () => {
     expect(doc.screen.AAPL.verdict).toBe("Pass");
     expect(doc.videoWrap).toBe("wrap text");
     expect(doc.marketRecap).toBe("recap text");
+    expect(doc.marketHealth).toBe("health text");
     expect(doc.skippedReelCount).toBe(0);
   });
 
@@ -77,6 +79,24 @@ describe("runPipeline", () => {
     const doc = await runPipeline(input, deps);
     expect(doc.status).toBe("complete");
     expect(doc.fred).toBeUndefined();
+  });
+
+  it("leaves marketHealth undefined when it fails, without failing the run", async () => {
+    const deps = baseDeps({ marketHealth: vi.fn().mockRejectedValue(new Error("AI 500")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.marketHealth).toBeUndefined();
+  });
+
+  it("passes marketHealth the live index/macro quotes alongside the fred data", async () => {
+    const marketHealthMock = vi.fn().mockResolvedValue("health text");
+    const deps = baseDeps({ marketHealth: marketHealthMock });
+    await runPipeline(input, deps);
+
+    const [indexAndMacro, fredArg] = marketHealthMock.mock.calls[0];
+    expect(indexAndMacro.length).toBeGreaterThanOrEqual(8); // 4 indices + 4 macro proxies
+    expect(indexAndMacro[0]).toEqual({ label: expect.any(String), price: 200, changePct: 1 });
+    expect(fredArg).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Unemployment Rate" })]));
   });
 
   it("filters out reels not posted on input.targetDate", async () => {

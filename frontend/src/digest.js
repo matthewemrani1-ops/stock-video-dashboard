@@ -122,6 +122,9 @@ function renderDigest(docData) {
       .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${cd.value.toFixed(2)}</div></div>`)
       .join("");
   }
+  if (docData.marketHealth) {
+    document.getElementById("macroSummary").innerHTML = `<div class="ds-head">Market Health — what to watch for</div><div class="ds-body"><p>${esc(docData.marketHealth).replace(/\n\n/g, "</p><p>")}</p></div>`;
+  }
 
   const now = new Date();
   lastRun.textContent = now.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });

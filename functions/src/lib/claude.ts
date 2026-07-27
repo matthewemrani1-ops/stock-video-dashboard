@@ -72,3 +72,21 @@ Plain text, no headers, no markdown, 2 short paragraphs max. Do not give buy/sel
 
   return (await callClaude(sys, `Date: ${dateLabel}\n\nHeadlines:\n${top}`, 400, cfg)).trim();
 }
+
+export async function marketHealth(
+  indexAndMacro: { label: string; price: number; changePct: number }[],
+  fred: { label: string; value: number; note: string }[] | undefined,
+  cfg: ClaudeConfig
+): Promise<string> {
+  let digest = indexAndMacro.map((d) => `${d.label}: $${d.price.toFixed(2)} (${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}% today)`).join("\n");
+  if (fred && fred.length > 0) {
+    digest += "\n" + fred.map((d) => `${d.label}: ${d.value.toFixed(2)} (${d.note})`).join("\n");
+  }
+
+  const sys = `You are explaining market health indicators on a personal dashboard for someone who is not a professional trader. Given today's readings for major indices, macro proxy ETFs (VIXY as a volatility/fear proxy, TLT as long Treasuries — rises when investors seek safety, HYG as high-yield credit — falls when credit stress rises, UUP as the dollar index), and where available: the 10Y-2Y Treasury yield spread (negative/inverted has historically preceded recessions), the unemployment rate, the Fed funds rate, CPI inflation (year-over-year, above ~3% is elevated vs. the Fed's ~2% target), initial jobless claims (a fast-moving weekly labor market signal — rising claims can signal labor weakness), and industrial production (year-over-year, negative = manufacturing contraction), write:
+1. A 2-3 sentence plain-English read on what today's levels suggest about market mood and valuation (risk-on bull conditions vs. risk-off/recession-warning conditions).
+2. A short "what to watch for" note: 2-3 concrete signs someone should look for in these same indicators if conditions were shifting toward a recession, versus signs of a healthy bull market.
+Plain text, no headers, no markdown, 2 short paragraphs max. Be educational, not alarmist. Do not give investment advice.`;
+
+  return (await callClaude(sys, digest, 400, cfg)).trim();
+}

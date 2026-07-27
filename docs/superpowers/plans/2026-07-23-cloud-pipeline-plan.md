@@ -435,6 +435,7 @@ export interface DigestDoc {
   screen: Record<string, ScreenResult>;
   videoWrap?: string;
   marketRecap?: string;
+  marketHealth?: string;
   fred?: { label: string; value: number; note: string }[];
   skippedReelCount: number;
   startedAt: number;
@@ -2564,3 +2565,20 @@ cd ~/stock-video-dashboard
 git add frontend/netlify.toml
 git commit -m "chore: add Netlify config"
 ```
+
+---
+
+## Post-launch addition: "Market Health" summary (2026-07-27)
+
+Discovered via user review after the initial launch: the original prototype had a third AI summary, `renderMacroSummary()` (prototype `~/Downloads/stock-video-dashboard_23.html:1054-1098`, heading "Market Health — what to watch for"), that was missed during brainstorming's "carry everything over" scoping — only Video Wrap and Market Recap were enumerated. The `.macro-summary` CSS class was even carried over in Task 12 but left unused, confirming the oversight.
+
+Added, following the same pattern as `videoWrap`/`marketRecap` (computed once per pipeline run, stored on the digest doc, not a live/client-side call):
+
+- **`functions/src/lib/types.ts`**: `DigestDoc.marketHealth?: string`.
+- **`functions/src/lib/claude.ts`**: new `marketHealth(indexAndMacro, fred, cfg)`, system prompt ported verbatim from the prototype. Unlike `videoWrap`/`marketRecap`, this call has no date prefix in its user content and no date suffix in its rendered heading — matches source exactly.
+- **`functions/src/lib/pipeline.ts`**: added `PipelineDeps.marketHealth`; added local `INDEX_PROXIES`/`MACRO_PROXIES` constants (mirroring `frontend/src/digest.js`'s copies) and a `loadIndexAndMacroQuotes()` helper that pulls fresh quotes via the existing `getQuote` dep; calls `deps.marketHealth(indexAndMacro, fred, claudeCfg)` after `fred` is computed, wrapped in try/catch (isolated failure — `marketHealth` left `undefined`, run still `"complete"`), matching every other optional-field pattern in this file.
+- **`functions/src/index.ts`**: wired the real `marketHealth` from `claude.ts` into the `deps` object passed to `runPipeline`.
+- **`frontend/index.html`**: added `<div id="macroSummary" class="daily-summary macro-summary"></div>` right after the FRED strip section (matches prototype placement exactly), using CSS already present from Task 12.
+- **`frontend/src/digest.js`**: renders `docData.marketHealth` into `#macroSummary` with heading "Market Health — what to watch for" (no date suffix), same paragraph-splitting pattern as the other two summaries.
+
+Tests: `functions/test/claude.test.ts` (`marketHealth` describe block — response pass-through, digest-format with/without FRED data, full system-prompt/max_tokens/model body assertion) and `functions/test/pipeline.test.ts` (happy-path assertion, failure-isolation test, and a test confirming `marketHealth` receives both the live index/macro quotes and the `fred` data). Verified visually in the browser with mocked data before deploy.

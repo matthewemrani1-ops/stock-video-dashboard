@@ -15,6 +15,11 @@ export interface PipelineDeps {
   extractTickers: (text: string, cfg: { apiKey: string; model: string }) => Promise<Extraction[]>;
   videoWrap: (ranked: RankedTicker[], dateLabel: string, cfg: { apiKey: string; model: string }) => Promise<string>;
   marketRecap: (headlines: { headline: string; summary?: string }[], dateLabel: string, cfg: { apiKey: string; model: string }) => Promise<string>;
+  marketHealth: (
+    indexAndMacro: { label: string; price: number; changePct: number }[],
+    fred: DigestDoc["fred"],
+    cfg: { apiKey: string; model: string }
+  ) => Promise<string>;
   getQuote: (sym: string, key: string) => Promise<{ price: number; changePct: number } | null>;
   getFundamentals: (sym: string, key: string) => Promise<RankedTicker["fundamentals"] | null>;
   getProfile: (sym: string, key: string) => Promise<RankedTicker["profile"] | null>;
@@ -82,6 +87,33 @@ function isOnDate(ms: number | null, target: Date): boolean {
   if (ms === null) return true; // no timestamp field found -> don't exclude it, matches source's permissive fallback
   const d = new Date(ms);
   return d.getFullYear() === target.getFullYear() && d.getMonth() === target.getMonth() && d.getDate() === target.getDate();
+}
+
+const INDEX_PROXIES = [
+  { sym: "SPY", label: "S&P 500" },
+  { sym: "DIA", label: "Dow Jones" },
+  { sym: "QQQ", label: "Nasdaq 100" },
+  { sym: "IWM", label: "Russell 2000" },
+];
+const MACRO_PROXIES = [
+  { sym: "VIXY", label: "Volatility (VIX proxy)" },
+  { sym: "TLT", label: "20Y+ Treasuries" },
+  { sym: "HYG", label: "High-Yield Credit" },
+  { sym: "UUP", label: "US Dollar Index" },
+];
+
+async function loadIndexAndMacroQuotes(priceKey: string, deps: PipelineDeps): Promise<{ label: string; price: number; changePct: number }[]> {
+  const results = await Promise.all(
+    [...INDEX_PROXIES, ...MACRO_PROXIES].map(async (proxy) => {
+      try {
+        const q = await deps.getQuote(proxy.sym, priceKey);
+        return q ? { label: proxy.label, price: q.price, changePct: q.changePct } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.filter((r): r is { label: string; price: number; changePct: number } => r !== null);
 }
 
 async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): Promise<DigestDoc["fred"] | undefined> {
@@ -201,6 +233,14 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
 
   const fred = await loadFred(secrets, deps);
 
+  let marketHealth: string | undefined;
+  try {
+    const indexAndMacro = await loadIndexAndMacroQuotes(secrets.priceKey, deps);
+    marketHealth = await deps.marketHealth(indexAndMacro, fred, claudeCfg);
+  } catch {
+    marketHealth = undefined;
+  }
+
   return {
     status: "complete",
     dateLabel: input.dateLabel,
@@ -208,6 +248,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
     screen,
     videoWrap,
     marketRecap,
+    marketHealth,
     fred,
     skippedReelCount,
     startedAt,
