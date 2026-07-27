@@ -19,4 +19,4 @@ export const functions = getFunctions(app);
 
 // liveQuote is a plain HTTP function (onRequest), not callable, so the
 // frontend fetches it directly rather than through the Functions SDK.
-export const FUNCTIONS_BASE_URL = "https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net";
+export const FUNCTIONS_BASE_URL = "https://us-central1-signal-stock-digest-67e26.cloudfunctions.net";
