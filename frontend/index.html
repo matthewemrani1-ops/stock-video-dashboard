@@ -4,20 +4,287 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Signal — Daily Stock Video Digest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0C121E; --bg-glow:#14203a;
+    --surface:#141C2C; --surface-2:#1A2438; --surface-3:#212D45;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+    --ink:#EEF1F7; --muted:#8792A6; --faint:#5A6479;
+    --gold:#E6C883; --gold-2:#CBA758; --gold-glow:rgba(230,200,131,.14);
+    --pos:#40D6A0; --pos-soft:rgba(64,214,160,.12);
+    --neg:#F27272; --neg-soft:rgba(242,114,114,.12);
+    --hold:#E6C883; --hold-soft:rgba(230,200,131,.12);
+    --radius:16px;
+    --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 500px at 78% -8%, var(--bg-glow) 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif; line-height:1.5;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  .mono{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+  .display{font-family:"Space Grotesk",sans-serif}
+  .wrap{max-width:940px;margin:0 auto;padding:34px 22px 90px}
+
+  header.top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:26px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:38px;height:38px;border-radius:11px;flex:none;
+    background:linear-gradient(150deg,var(--gold) 0%,var(--gold-2) 100%);
+    display:grid;place-items:center;color:#20170A;font-weight:700;font-family:"Space Grotesk";font-size:19px;
+    box-shadow:0 6px 18px var(--gold-glow)}
+  .title h1{font-family:"Space Grotesk";font-weight:700;font-size:23px;margin:0;letter-spacing:-.02em}
+  .title p{margin:3px 0 0;color:var(--muted);font-size:13.5px;max-width:440px}
+  .gear{background:var(--surface);border:1px solid var(--line-2);border-radius:11px;padding:10px 14px;cursor:pointer;font-size:13.5px;color:var(--ink);display:flex;gap:8px;align-items:center;transition:background .18s,border-color .18s}
+  .gear:hover{background:var(--surface-2);border-color:var(--gold-2)}
+
+  .banner{display:none;background:var(--neg-soft);border:1px solid rgba(242,114,114,.35);color:#F6A4A4;border-radius:12px;padding:13px 16px;font-size:13.5px;margin-bottom:20px}
+  .banner.show{display:block}
+
+  .runbar{
+    position:relative;overflow:hidden;
+    background:linear-gradient(180deg,var(--surface) 0%,var(--surface-2) 100%);
+    border:1px solid var(--line-2);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:22px}
+  .runbar::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.5}
+  .run-left{display:flex;flex-direction:column;gap:3px}
+  .run-left .k{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint)}
+  .run-left .v{font-size:15px;color:var(--ink);font-weight:500}
+  .date-pick{display:flex;flex-direction:column;gap:5px}
+  .date-pick .k{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint)}
+  .date-pick input[type="date"]{background:var(--surface-2);border:1px solid var(--line-2);border-radius:9px;padding:8px 11px;color:var(--ink);font-size:13.5px;color-scheme:dark}
+  .date-pick input[type="date"]:focus{outline:none;border-color:var(--gold-2)}
+  .date-hint{font-size:12px;color:var(--faint);margin:8px 2px 20px}
+  .run-btn{
+    background:linear-gradient(135deg,var(--gold) 0%,var(--gold-2) 100%);
+    color:#20170A;border:0;border-radius:12px;padding:15px 24px;font-size:15px;font-weight:600;
+    font-family:"Space Grotesk";cursor:pointer;display:flex;gap:10px;align-items:center;
+    box-shadow:0 8px 22px var(--gold-glow);transition:transform .05s,box-shadow .2s,opacity .2s}
+  .run-btn:hover{box-shadow:0 10px 30px var(--gold-glow)}
+  .run-btn:active{transform:translateY(1px)}
+  .run-btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+
+  .progress{display:none;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius);padding:18px 20px;margin-bottom:22px;box-shadow:var(--shadow)}
+  .progress.show{display:block}
+  .progress .row{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--muted);padding:4px 0}
+  .progress .row.done{color:var(--ink)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--surface-3);flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.02)}
+  .row.active .dot{background:var(--gold);box-shadow:0 0 0 4px var(--gold-glow);animation:pulse 1.1s infinite}
+  .row.done .dot{background:var(--pos)}
+  .row.err .dot{background:var(--neg)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .bar{height:5px;background:var(--surface-3);border-radius:99px;overflow:hidden;margin-top:14px}
+  .bar > i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,var(--gold-2),var(--gold));transition:width .35s ease}
+
+  .section-label{display:flex;align-items:baseline;justify-content:space-between;margin:8px 4px 14px}
+  .section-label h2{font-family:"Space Grotesk";font-size:12.5px;font-weight:600;margin:0;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .section-label span{font-size:12.5px;color:var(--faint);font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
+  .oa-btn{display:block;background:var(--surface);border:1px solid var(--line-2);color:var(--gold);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;margin:0 2px 16px;transition:background .15s,border-color .15s}
+  .oa-btn:hover{background:var(--surface-2);border-color:var(--gold-2)}
+
+  .strip-section{margin-bottom:22px}
+  .strip-label{display:flex;align-items:baseline;gap:7px;font-family:"Space Grotesk";font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 2px 10px}
+  .strip-label span{font-family:"Inter";font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint)}
+  .indices-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  .strip-caption{font-size:12px;color:var(--faint);margin:9px 2px 0;line-height:1.5}
+  .indices-strip.macro .idx-card{border-color:rgba(230,200,131,.18)}
+  .macro-summary{margin-top:2px;margin-bottom:0}
+  .idx-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;transition:border-color .15s,transform .15s}
+  .idx-card:hover{border-color:var(--line-2);transform:translateY(-1px)}
+  .idx-card .in{font-size:12.5px;font-weight:600;color:var(--ink);letter-spacing:.01em;margin-bottom:7px;line-height:1.3}
+  .idx-card .in .tick{display:block;font-family:"JetBrains Mono";font-size:10.5px;font-weight:500;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .idx-card .ip{font-family:"JetBrains Mono";font-weight:700;font-size:19px;letter-spacing:-.01em}
+  .idx-card .ic{font-family:"JetBrains Mono";font-size:12.5px;font-weight:600;margin-top:4px;letter-spacing:.01em}
+  .idx-card .ic.up{color:var(--pos)}
+  .idx-card .ic.down{color:var(--neg)}
+  @media (max-width:720px){.indices-strip{grid-template-columns:repeat(2,1fr)}}
+
+  .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0 22px}
+  .summary-grid .daily-summary{margin-bottom:0}
+  @media (max-width:720px){.summary-grid{grid-template-columns:1fr}}
+
+  .daily-summary{display:none}
+  .daily-summary:not(:empty){display:block;background:linear-gradient(180deg,rgba(230,200,131,.06) 0%,var(--surface) 60%);border:1px solid var(--line-2);border-radius:var(--radius);padding:20px 22px;margin-bottom:22px;box-shadow:var(--shadow)}
+  .ds-head{font-family:"Space Grotesk";font-size:12.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+  .ds-body{font-size:14.5px;line-height:1.65;color:var(--ink)}
+  .ds-body p{margin:0 0 10px}
+  .ds-body p:last-child{margin-bottom:0}
+  .ds-loading{font-size:13.5px;color:var(--muted)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:13px;overflow:hidden;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+  .card:hover{transform:translateY(-2px);border-color:var(--line-2);box-shadow:0 14px 34px rgba(0,0,0,.3)}
+  .card.open{border-color:var(--line-2)}
+
+  .card.featured{background:linear-gradient(180deg,rgba(230,200,131,.07) 0%,var(--surface) 46%);border-color:rgba(230,200,131,.28);box-shadow:0 14px 40px rgba(0,0,0,.35),0 0 0 1px rgba(230,200,131,.06)}
+  .card.featured::before{content:"";display:block;height:2px;background:linear-gradient(90deg,var(--gold),transparent)}
+  .card.featured .rank{color:var(--gold);font-size:30px}
+  .card.featured .sym{font-size:24px}
+  .card.featured .price .p{font-size:22px}
+  .card.featured .card-head{padding:20px 22px}
+
+  .card-head{display:flex;align-items:center;gap:18px;padding:17px 20px;cursor:pointer}
+  .rank{font-family:"Space Grotesk";font-weight:700;font-size:22px;color:var(--faint);width:40px;flex:none;text-align:center;font-variant-numeric:tabular-nums}
+  .tick{flex:none;min-width:0}
+  .tick .sym{font-family:"JetBrains Mono";font-weight:700;font-size:19px;letter-spacing:.01em}
+  .tick .co{font-size:12.5px;color:var(--muted);max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+  .headmid{flex:1;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:99px;white-space:nowrap;letter-spacing:.01em;border:1px solid transparent}
+  .chip.buy{background:var(--pos-soft);color:var(--pos);border-color:rgba(64,214,160,.25)}
+  .chip.sell{background:var(--neg-soft);color:var(--neg);border-color:rgba(242,114,114,.25)}
+  .chip.hold{background:var(--hold-soft);color:var(--hold);border-color:rgba(230,200,131,.25)}
+  .chip.count{background:var(--surface-3);color:var(--ink);border-color:var(--line-2)}
+  .chip.screen-pass{background:var(--pos-soft);color:var(--pos);border-color:rgba(64,214,160,.3);font-weight:700}
+  .chip.screen-watch{background:var(--hold-soft);color:var(--hold);border-color:rgba(230,200,131,.3);font-weight:700}
+  .chip.screen-caution{background:var(--neg-soft);color:var(--neg);border-color:rgba(242,114,114,.3);font-weight:700}
+  .price{flex:none;text-align:right}
+  .price .p{font-family:"JetBrains Mono";font-weight:700;font-size:18px}
+  .price .l{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+  .chev{flex:none;color:var(--faint);transition:transform .22s;font-size:13px}
+  .card.open .chev{transform:rotate(180deg);color:var(--gold)}
+
+  .card-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s ease}
+  .card.open .card-body{grid-template-rows:1fr}
+  .card-body > .inner{overflow:hidden;border-top:1px solid var(--line);background:rgba(0,0,0,.14)}
+  .take{padding:15px 20px 15px 58px;border-bottom:1px solid var(--line)}
+  .take:last-child{border-bottom:0}
+  .take-top{display:flex;align-items:center;gap:10px;margin-bottom:7px;flex-wrap:wrap}
+  .take-top .who{font-weight:600;font-size:13.5px}
+  .lvl{font-family:"JetBrains Mono";font-size:12px;color:var(--muted)}
+  .lvl b{color:var(--gold)}
+  .recap{font-size:14px;color:var(--ink);margin:2px 0 9px;max-width:640px}
+  .quote{font-size:13px;color:var(--muted);border-left:2px solid var(--gold-2);padding:3px 0 3px 13px;font-style:italic}
+
+  .note{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius);padding:26px;text-align:center;color:var(--muted);box-shadow:var(--shadow);font-size:14px}
+  .note b{color:var(--ink);font-weight:600}
+
+  .fund-row{display:flex;gap:24px;padding:14px 20px 14px 58px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .fund{display:flex;flex-direction:column;gap:2px}
+  .fund .fk{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+  .fund .fv{font-family:"JetBrains Mono";font-size:13.5px;font-weight:600;color:var(--gold)}
+  .fund-unavailable{padding:14px 20px 14px 58px;border-bottom:1px solid var(--line);font-size:13px;color:var(--faint)}
+
+  .analyst-row{display:flex;align-items:center;gap:12px;padding:12px 20px 12px 58px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .ak{font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+  .ac{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px}
+  .ac.buy{background:var(--pos-soft);color:var(--pos)}
+  .ac.hold{background:var(--hold-soft);color:var(--hold)}
+  .ac.sell{background:var(--neg-soft);color:var(--neg)}
+
+  .screen-row{padding:14px 20px 14px 58px;border-bottom:1px solid var(--line)}
+  .screen-checks{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .scheck{font-size:13px;font-family:"JetBrains Mono"}
+  .scheck.pass{color:var(--pos)}
+  .scheck.fail{color:var(--neg)}
+  .scheck-detail{color:var(--faint);font-family:"Inter"}
+
+  .disclaimer{margin-top:28px;font-size:12.5px;color:var(--muted);background:var(--hold-soft);border:1px solid rgba(230,200,131,.25);border-radius:12px;padding:14px 16px}
+  .disclaimer b{color:var(--gold)}
+
+  a{color:var(--gold)}
+  .mono-inline{font-family:"JetBrains Mono";font-size:.92em;background:var(--surface-3);padding:1px 5px;border-radius:5px}
+
+  #loginGate{min-height:100vh;display:flex;align-items:center;justify-content:center}
+  #signInBtn{
+    background:linear-gradient(135deg,var(--gold) 0%,var(--gold-2) 100%);
+    color:#20170A;border:0;border-radius:12px;padding:15px 24px;font-size:15px;font-weight:600;
+    font-family:"Space Grotesk";cursor:pointer;box-shadow:0 8px 22px var(--gold-glow)}
+
+  @media (max-width:560px){
+    .headmid{width:100%;order:5}
+    .card-head{flex-wrap:wrap;gap:12px}
+    .take{padding-left:20px}
+    .run-left{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
 </head>
 <body>
   <div id="loginGate" style="display:none">
     <button id="signInBtn">Sign in with Google</button>
   </div>
   <div id="app" style="display:none">
-    <!-- digest view (Task 12) and settings view (Task 13) go here -->
+    <div class="wrap">
+      <header class="top">
+        <div class="brand">
+          <div class="logo">S</div>
+          <div class="title">
+            <h1 class="display">Signal</h1>
+            <p>Today's most-discussed stocks across your tracked accounts — each take tied to who said it.</p>
+          </div>
+        </div>
+      </header>
+
+      <div class="strip-section">
+        <div class="strip-label">Major Indices <span>· tracking ETFs</span></div>
+        <div class="indices-strip" id="indicesStrip"></div>
+        <p class="strip-caption">Prices shown are the tracking ETF, not the raw index level (e.g. SPY ≈ 1/10th of the S&amp;P 500 index) — % change is accurate either way.</p>
+      </div>
+
+      <div class="strip-section">
+        <div class="strip-label">Volatility &amp; Credit <span>· risk sentiment</span></div>
+        <div class="indices-strip macro" id="macroStrip"></div>
+      </div>
+
+      <div class="strip-section">
+        <div class="strip-label">Economic Indicators <span>· FRED</span></div>
+        <div class="indices-strip macro" id="fredStrip"></div>
+      </div>
+
+      <div class="runbar">
+        <div class="run-left">
+          <span class="k">Last run</span>
+          <span class="v mono" id="lastRun">—</span>
+        </div>
+        <div class="date-pick">
+          <span class="k">Review videos from</span>
+          <input type="date" id="reviewDate" class="mono" />
+        </div>
+        <button class="run-btn" id="runBtn">▶ Run analysis</button>
+      </div>
+
+      <div class="summary-grid">
+        <div id="dailySummary" class="daily-summary"></div>
+        <div id="newsSummary" class="daily-summary"></div>
+      </div>
+
+      <div id="results"></div>
+
+      <div class="disclaimer">
+        <b>Not financial advice.</b> Every buy/sell view below is what a person said in a video, attributed to them — not a recommendation from this tool. Video stock picks are often promotional. Verify before acting. The Pass/Watch/Caution screen is a simple automated check on 2–3 basic metrics (P/E, analyst consensus, beta) — it is not a full analysis and should not be treated as a buy or sell signal on its own.
+      </div>
+    </div>
   </div>
   <script type="module">
     import { requireOwner, signIn } from "./src/auth.js";
+    import { watchDate, runNow, startLiveStrips } from "./src/digest.js";
+
     document.getElementById("signInBtn").addEventListener("click", signIn);
+    document.getElementById("runBtn").addEventListener("click", runNow);
+
+    let unsubscribe = null;
+    function selectDate(dateKey) {
+      if (unsubscribe) unsubscribe();
+      unsubscribe = watchDate(dateKey);
+    }
+
+    document.getElementById("reviewDate").addEventListener("change", (e) => {
+      selectDate(e.target.value || new Date().toISOString().slice(0, 10));
+    });
+
     requireOwner((user) => {
       document.getElementById("loginGate").style.display = "none";
       document.getElementById("app").style.display = "block";
+      selectDate(new Date().toISOString().slice(0, 10));
+      startLiveStrips();
     });
   </script>
 </body>
