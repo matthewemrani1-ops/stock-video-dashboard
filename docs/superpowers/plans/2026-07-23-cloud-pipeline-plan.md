@@ -1771,6 +1771,16 @@ import type { DigestDoc } from "./lib/types.js";
 
 initializeApp();
 
+// DigestDoc has several optional fields (fred, errorMessage, videoWrap,
+// marketRecap) that are legitimately `undefined` on any given run — e.g.
+// when FRED calls fail. The Admin SDK rejects `undefined` in a document by
+// default (throws, doesn't just drop the field), which previously crashed
+// docRef.set() *after* a fully successful pipeline run, leaving the digest
+// doc stuck at status:"running" forever. This must be set once, before any
+// other Firestore call on this instance.
+const db = getFirestore();
+db.settings({ ignoreUndefinedProperties: true });
+
 const OWNER_UID = "owner-test-uid"; // replaced with the real Firebase Auth UID in Task 10
 
 const apifyToken = defineSecret("APIFY_TOKEN");
@@ -1823,7 +1833,6 @@ const deps: PipelineDeps = {
 };
 
 async function executeDigestRun(requestedDateKey?: string): Promise<void> {
-  const db = getFirestore();
   const { targetDate, dateKey } = resolveTargetDate(requestedDateKey);
   const dateLabel = targetDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const docRef = db.collection("digests").doc(dateKey);
