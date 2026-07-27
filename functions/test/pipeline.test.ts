@@ -3,7 +3,7 @@ import { runPipeline, type PipelineDeps, type PipelineInput } from "../src/lib/p
 
 function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
   return {
-    runActor: vi.fn().mockResolvedValue([{ transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: Date.now() }]),
+    runActor: vi.fn().mockResolvedValue([{ transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: input.targetDate.getTime() }]),
     extractTickers: vi.fn().mockResolvedValue([{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "bullish", quote: "" }]),
     videoWrap: vi.fn().mockResolvedValue("wrap text"),
     marketRecap: vi.fn().mockResolvedValue("recap text"),
@@ -51,8 +51,8 @@ describe("runPipeline", () => {
   it("skips a reel whose extraction fails and keeps going", async () => {
     const deps = baseDeps({
       runActor: vi.fn().mockResolvedValue([
-        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: Date.now() },
-        { transcript: "NVDA looks strong", url: "https://ig.com/p/2", pageName: "trader1", timestamp: Date.now() },
+        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: input.targetDate.getTime() },
+        { transcript: "NVDA looks strong", url: "https://ig.com/p/2", pageName: "trader1", timestamp: input.targetDate.getTime() },
       ]),
       extractTickers: vi
         .fn()
