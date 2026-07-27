@@ -61,25 +61,45 @@ async function executeDigestRun(): Promise<void> {
   const settingsSnap = await db.collection("config").doc("settings").get();
   const settings = settingsSnap.data() as { trackedHandles?: string[]; topN?: number } | undefined;
 
-  await docRef.set({ status: "running", dateLabel, startedAt: Date.now() } satisfies Partial<DigestDoc>);
+  const startedAt = Date.now();
+  await docRef.set({ status: "running", dateLabel, startedAt } satisfies Partial<DigestDoc>);
 
-  const result = await runPipeline(
-    {
-      dateLabel,
-      targetDate: today,
-      trackedHandles: settings?.trackedHandles ?? [],
-      topN: settings?.topN ?? 15,
-      secrets: {
-        apifyToken: apifyToken.value(),
-        actorId: "apify/instagram-reel-scraper",
-        aiKey: anthropicKey.value(),
-        model: "claude-haiku-4-5-20251001",
-        priceKey: finnhubKey.value(),
-        fredKey: fredKey.value(),
+  // runPipeline is designed to never throw (every network-facing step is
+  // self-contained and degrades to an "error" DigestDoc or an undefined
+  // field instead). This catch is a second line of defense only: if it
+  // ever did throw, this doc would otherwise be stuck at "running" forever
+  // and guardOverlap would permanently block all future runs.
+  let result: DigestDoc;
+  try {
+    result = await runPipeline(
+      {
+        dateLabel,
+        targetDate: today,
+        trackedHandles: settings?.trackedHandles ?? [],
+        topN: settings?.topN ?? 15,
+        secrets: {
+          apifyToken: apifyToken.value(),
+          actorId: "apify/instagram-reel-scraper",
+          aiKey: anthropicKey.value(),
+          model: "claude-haiku-4-5-20251001",
+          priceKey: finnhubKey.value(),
+          fredKey: fredKey.value(),
+        },
       },
-    },
-    deps
-  );
+      deps
+    );
+  } catch (e) {
+    result = {
+      status: "error",
+      errorMessage: e instanceof Error ? e.message : String(e),
+      dateLabel,
+      rankedTickers: [],
+      screen: {},
+      skippedReelCount: 0,
+      startedAt,
+      completedAt: Date.now(),
+    };
+  }
 
   await docRef.set(result);
 }
