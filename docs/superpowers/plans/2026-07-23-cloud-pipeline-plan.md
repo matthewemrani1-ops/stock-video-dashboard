@@ -2353,7 +2353,9 @@ Add to the module script from Task 11:
   requireOwner((user) => {
     document.getElementById("loginGate").style.display = "none";
     document.getElementById("app").style.display = "block";
-    selectDate(new Date().toISOString().slice(0, 10));
+    const todayKey = new Date().toISOString().slice(0, 10);
+    document.getElementById("reviewDate").value = todayKey;
+    selectDate(todayKey);
     startLiveStrips();
   });
 </script>
