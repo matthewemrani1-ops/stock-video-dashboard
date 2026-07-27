@@ -198,6 +198,26 @@
     color:#20170A;border:0;border-radius:12px;padding:15px 24px;font-size:15px;font-weight:600;
     font-family:"Space Grotesk";cursor:pointer;box-shadow:0 8px 22px var(--gold-glow)}
 
+  .overlay{display:none;position:fixed;inset:0;background:rgba(6,10,18,.7);backdrop-filter:blur(4px);z-index:50;padding:24px;overflow:auto}
+  .overlay.show{display:flex;align-items:flex-start;justify-content:center}
+  .modal{background:var(--surface);border:1px solid var(--line-2);border-radius:18px;max-width:600px;width:100%;margin:auto;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--line)}
+  .modal-head h3{font-family:"Space Grotesk";margin:0;font-size:18px}
+  .x{background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1}
+  .x:hover{color:var(--ink)}
+  .modal-body{padding:20px 22px}
+  .field{margin-bottom:17px}
+  .field label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+  .field .hint{font-size:12px;color:var(--muted);font-weight:400;margin-bottom:7px;line-height:1.45}
+  .field input,.field textarea{width:100%;border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;font-size:13px;font-family:"JetBrains Mono";background:var(--bg);color:var(--ink)}
+  .field textarea{resize:vertical;min-height:76px;line-height:1.5}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--gold-2);box-shadow:0 0 0 3px var(--gold-glow)}
+  .field input::placeholder{color:var(--faint)}
+  .save-row{display:flex;gap:10px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--line)}
+  .btn-ghost{background:var(--surface-2);border:1px solid var(--line-2);color:var(--ink);border-radius:10px;padding:11px 17px;cursor:pointer;font-size:14px}
+  .btn-ghost:hover{background:var(--surface-3)}
+  .btn-save{background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#20170A;border:0;border-radius:10px;padding:11px 20px;cursor:pointer;font-size:14px;font-weight:600}
+
   @media (max-width:560px){
     .headmid{width:100%;order:5}
     .card-head{flex-wrap:wrap;gap:12px}
@@ -221,6 +241,7 @@
             <p>Today's most-discussed stocks across your tracked accounts — each take tied to who said it.</p>
           </div>
         </div>
+        <button class="gear" id="settingsBtn">⚙︎ Settings</button>
       </header>
 
       <div class="strip-section">
@@ -263,12 +284,52 @@
       </div>
     </div>
   </div>
+
+  <!-- Settings modal -->
+  <div class="overlay" id="settingsOverlay">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 class="display">Settings</h3>
+        <button class="x" id="settingsCloseBtn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Instagram handles</label>
+          <div class="hint">One per line (with or without @). The accounts scanned each day.</div>
+          <textarea id="trackedHandles" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label>Daily schedule time</label>
+          <div class="hint">When the daily analysis run kicks off (24h, local time).</div>
+          <input id="scheduleTime" type="time" />
+        </div>
+        <div class="field">
+          <label>Top-N tickers</label>
+          <div class="hint">How many of the most-discussed tickers to include in the digest.</div>
+          <input id="topN" type="number" min="1" step="1" />
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="btn-ghost" id="settingsCancelBtn">Cancel</button>
+        <button class="btn-save" id="settingsSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { requireOwner, signIn } from "./src/auth.js";
     import { watchDate, runNow, startLiveStrips } from "./src/digest.js";
+    import { openSettings, closeSettings, saveSettings } from "./src/settings.js";
 
     document.getElementById("signInBtn").addEventListener("click", signIn);
     document.getElementById("runBtn").addEventListener("click", runNow);
+    document.getElementById("settingsBtn").addEventListener("click", openSettings);
+    document.getElementById("settingsCloseBtn").addEventListener("click", closeSettings);
+    document.getElementById("settingsCancelBtn").addEventListener("click", closeSettings);
+    document.getElementById("settingsSaveBtn").addEventListener("click", saveSettings);
+    document.getElementById("settingsOverlay").addEventListener("click", (e) => {
+      if (e.target === document.getElementById("settingsOverlay")) closeSettings();
+    });
 
     let unsubscribe = null;
     function selectDate(dateKey) {
