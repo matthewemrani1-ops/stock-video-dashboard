@@ -2142,7 +2142,8 @@ Copy the `<style>` block and the results-container markup from `~/Downloads/stoc
 `render()`'s markup, `viewChip()`, and `esc()` are ported unchanged from `~/Downloads/stock-video-dashboard_23.html:800-899`. There is no client-side `screenStock()` — the Pass/Watch/Caution verdict is computed once, server-side, in Task 3's `screen.ts`, and the frontend just reads the precomputed result straight off `docData.screen[sym]`. The only new code here is the Firestore listener and the "Run now" wiring, replacing the old `run()` function's direct API calls.
 
 ```js
-import { doc, onSnapshot, httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { db, functions, auth, FUNCTIONS_BASE_URL } from "./firebase-init.js";
 
 const INDEX_PROXIES = [
