@@ -7,7 +7,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 
-const OWNER_UID = "owner-test-uid";
+const OWNER_UID = "ETuFSQc87GXecZg8JEgLqpYhgkL2";
 let testEnv: RulesTestEnvironment;
 
 beforeAll(async () => {

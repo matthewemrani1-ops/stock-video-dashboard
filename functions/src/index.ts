@@ -14,7 +14,7 @@ import type { DigestDoc } from "./lib/types.js";
 
 initializeApp();
 
-const OWNER_UID = "owner-test-uid"; // replaced with the real Firebase Auth UID in Task 10
+const OWNER_UID = "ETuFSQc87GXecZg8JEgLqpYhgkL2";
 
 const apifyToken = defineSecret("APIFY_TOKEN");
 const anthropicKey = defineSecret("ANTHROPIC_KEY");

@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { assertOwner, guardOverlap } from "../src/index.js";
 
-const OWNER_UID = "owner-test-uid";
+const OWNER_UID = "ETuFSQc87GXecZg8JEgLqpYhgkL2";
 
 describe("assertOwner", () => {
   it("passes for the owner UID", () => {

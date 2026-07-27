@@ -4,12 +4,12 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebas
 import { getFunctions } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyBcLPTEIjI9aUBHD1mjEPsQhc-EHpFvSN0",
+  authDomain: "signal-stock-digest-67e26.firebaseapp.com",
+  projectId: "signal-stock-digest-67e26",
+  storageBucket: "signal-stock-digest-67e26.firebasestorage.app",
+  messagingSenderId: "622182804343",
+  appId: "1:622182804343:web:ff794cd85dd69df0da8f72",
 };
 
 export const app = initializeApp(firebaseConfig);

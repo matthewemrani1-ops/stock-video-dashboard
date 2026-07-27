@@ -1938,6 +1938,7 @@ This task requires the owner's own Firebase account (interactive login) — it c
 - Modify: `firestore.rules` (real owner UID)
 - Modify: `functions/src/index.ts` (real owner UID, line with `const OWNER_UID = "owner-test-uid"`)
 - Modify: `firestore-tests/rules.test.ts` (real owner UID, so the rules tests still match reality)
+- Modify: `functions/test/index.test.ts` (real owner UID — its own local `OWNER_UID` constant, used to test `assertOwner`/`guardOverlap`, must match `functions/src/index.ts`'s real value or those tests fail)
 
 - [ ] **Step 1: Install the Firebase CLI if needed and log in**
 
@@ -1975,7 +1976,7 @@ Deploy hosting with a temporary login-only page first (Task 11 will replace it),
 
 ```bash
 cd ~/stock-video-dashboard
-grep -rl "owner-test-uid" firestore.rules functions/src/index.ts firestore-tests/rules.test.ts
+grep -rl "owner-test-uid" firestore.rules functions/src/index.ts firestore-tests/rules.test.ts functions/test/index.test.ts
 ```
 
 Edit each matched file, replacing `"owner-test-uid"` with `"<OWNER_UID>"`.
@@ -2021,8 +2022,8 @@ In the Firebase Console → Firestore → create document `config/settings` with
 
 ```bash
 cd ~/stock-video-dashboard
-git add .firebaserc firestore.rules functions/src/index.ts firestore-tests/rules.test.ts
-git commit -m "chore: wire up real Firebase project ID and owner UID"
+git add .firebaserc firestore.rules functions/src/index.ts firestore-tests/rules.test.ts functions/test/index.test.ts frontend/src/firebase-init.js
+git commit -m "chore: wire up real Firebase project ID, owner UID, and web app config"
 ```
 
 ---
