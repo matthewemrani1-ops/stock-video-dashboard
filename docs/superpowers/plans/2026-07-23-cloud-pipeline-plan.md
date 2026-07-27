@@ -2059,7 +2059,7 @@ export function requireOwner(onSignedIn) {
     if (user) {
       onSignedIn(user);
     } else {
-      document.getElementById("loginGate").classList.add("show");
+      document.getElementById("loginGate").style.display = "block";
     }
   });
 }
@@ -2094,7 +2094,7 @@ export function signOutUser() {
     import { requireOwner, signIn } from "./src/auth.js";
     document.getElementById("signInBtn").addEventListener("click", signIn);
     requireOwner((user) => {
-      document.getElementById("loginGate").classList.remove("show");
+      document.getElementById("loginGate").style.display = "none";
       document.getElementById("app").style.display = "block";
     });
   </script>
@@ -2350,7 +2350,7 @@ Add to the module script from Task 11:
   });
 
   requireOwner((user) => {
-    document.getElementById("loginGate").classList.remove("show");
+    document.getElementById("loginGate").style.display = "none";
     document.getElementById("app").style.display = "block";
     selectDate(new Date().toISOString().slice(0, 10));
     startLiveStrips();

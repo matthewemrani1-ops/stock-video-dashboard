@@ -16,7 +16,7 @@
     import { requireOwner, signIn } from "./src/auth.js";
     document.getElementById("signInBtn").addEventListener("click", signIn);
     requireOwner((user) => {
-      document.getElementById("loginGate").classList.remove("show");
+      document.getElementById("loginGate").style.display = "none";
       document.getElementById("app").style.display = "block";
     });
   </script>

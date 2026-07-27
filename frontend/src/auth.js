@@ -6,7 +6,7 @@ export function requireOwner(onSignedIn) {
     if (user) {
       onSignedIn(user);
     } else {
-      document.getElementById("loginGate").classList.add("show");
+      document.getElementById("loginGate").style.display = "block";
     }
   });
 }
