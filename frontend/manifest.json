@@ -1,0 +1,13 @@
+{
+  "name": "Signal — Daily Stock Video Digest",
+  "short_name": "Signal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0C121E",
+  "theme_color": "#0C121E",
+  "icons": [
+    { "src": "/icon192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
