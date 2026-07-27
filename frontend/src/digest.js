@@ -174,8 +174,9 @@ export async function runNow() {
   const runBtn = document.getElementById("runBtn");
   runBtn.disabled = true;
   try {
+    const dateKey = document.getElementById("reviewDate").value || undefined;
     const call = httpsCallable(functions, "runNow");
-    await call();
+    await call({ dateKey });
   } catch (e) {
     document.getElementById("results").innerHTML = `<div class="note"><b>Couldn't start a run.</b><br>${esc(e.message)}</div>`;
   } finally {

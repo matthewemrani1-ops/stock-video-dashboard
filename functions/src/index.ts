@@ -29,8 +29,22 @@ export function assertOwner(auth: { uid: string } | undefined): void {
 
 export function guardOverlap(existing: { status: string } | undefined): void {
   if (existing?.status === "running") {
-    throw new HttpsError("already-exists", "already-exists: a run is already in progress for today");
+    throw new HttpsError("already-exists", "already-exists: a run is already in progress for this date");
   }
+}
+
+export function resolveTargetDate(dateKey: string | undefined): { targetDate: Date; dateKey: string } {
+  if (dateKey === undefined) {
+    const now = new Date();
+    return { targetDate: now, dateKey: now.toISOString().slice(0, 10) };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    throw new HttpsError("invalid-argument", "invalid-argument: dateKey must be in YYYY-MM-DD format");
+  }
+  // Anchor at noon local time, not midnight, so the calendar day doesn't
+  // shift backward for timezones behind UTC (matches the prototype's
+  // original date-picker handling).
+  return { targetDate: new Date(`${dateKey}T12:00:00`), dateKey };
 }
 
 const deps: PipelineDeps = {
@@ -48,11 +62,10 @@ const deps: PipelineDeps = {
   fredWithPrior,
 };
 
-async function executeDigestRun(): Promise<void> {
+async function executeDigestRun(requestedDateKey?: string): Promise<void> {
   const db = getFirestore();
-  const today = new Date();
-  const dateKey = today.toISOString().slice(0, 10);
-  const dateLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const { targetDate, dateKey } = resolveTargetDate(requestedDateKey);
+  const dateLabel = targetDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const docRef = db.collection("digests").doc(dateKey);
 
   const existing = await docRef.get();
@@ -74,7 +87,7 @@ async function executeDigestRun(): Promise<void> {
     result = await runPipeline(
       {
         dateLabel,
-        targetDate: today,
+        targetDate,
         trackedHandles: settings?.trackedHandles ?? [],
         topN: settings?.topN ?? 15,
         secrets: {
@@ -113,7 +126,8 @@ export const dailyDigestRun = onSchedule(
 
 export const runNow = onCall({ secrets: [apifyToken, anthropicKey, finnhubKey, fredKey], timeoutSeconds: 1800, memory: "512MiB" }, async (request) => {
   assertOwner(request.auth);
-  await executeDigestRun();
+  const requestedDateKey = typeof request.data?.dateKey === "string" ? request.data.dateKey : undefined;
+  await executeDigestRun(requestedDateKey);
   return { ok: true };
 });
 
