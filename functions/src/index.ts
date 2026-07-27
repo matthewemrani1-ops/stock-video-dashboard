@@ -124,6 +124,9 @@ export const dailyDigestRun = onSchedule(
   }
 );
 
+// Force a fresh deploy (unchanged-function deploys get skipped, including
+// their IAM policy sync) to pick up the public-invoker binding onCall
+// functions need at the underlying Cloud Run layer.
 export const runNow = onCall({ secrets: [apifyToken, anthropicKey, finnhubKey, fredKey], timeoutSeconds: 1800, memory: "512MiB" }, async (request) => {
   assertOwner(request.auth);
   const requestedDateKey = typeof request.data?.dateKey === "string" ? request.data.dateKey : undefined;
