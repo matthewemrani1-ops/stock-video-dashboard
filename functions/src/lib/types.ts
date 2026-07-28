@@ -31,6 +31,19 @@ export interface Fundamentals {
   return52Week: number | null;
 }
 
+export interface QuantFactor {
+  category: "Value" | "Quality" | "Momentum" | "Low-Volatility";
+  score: number;
+  detail: string;
+}
+
+export interface QuantScore {
+  score: number;
+  verdict: "Strong" | "Mixed" | "Weak";
+  factors: QuantFactor[];
+  explanation?: string;
+}
+
 export interface Profile {
   industry: string | null;
   name: string | null;
@@ -53,6 +66,7 @@ export interface RankedTicker {
   fundamentals?: Fundamentals;
   profile?: Profile;
   analyst?: Analyst;
+  quant?: QuantScore;
 }
 
 export interface ScreenCheck {
