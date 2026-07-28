@@ -20,6 +20,12 @@ export async function getFundamentals(sym: string, key: string): Promise<Fundame
     week52High: m["52WeekHigh"] ?? null,
     week52Low: m["52WeekLow"] ?? null,
     beta: m.beta ?? null,
+    pb: m.pbAnnual ?? null,
+    roe: m.roeTTM ?? null,
+    netMargin: m.netProfitMarginTTM ?? null,
+    debtToEquity: m["totalDebt/totalEquityAnnual"] ?? null,
+    return26Week: m["26WeekPriceReturnDaily"] ?? null,
+    return52Week: m["52WeekPriceReturnDaily"] ?? null,
   };
 }
 

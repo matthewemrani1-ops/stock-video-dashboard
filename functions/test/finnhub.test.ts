@@ -23,17 +23,67 @@ describe("getQuote", () => {
 });
 
 describe("getFundamentals", () => {
-  it("maps the metric response", async () => {
+  it("maps the metric response, including the quant-score fields", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ metric: { peTTM: 22.1, marketCapitalization: 3000, "52WeekHigh": 200, "52WeekLow": 100, beta: 1.1 } }) })
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          metric: {
+            peTTM: 22.1,
+            marketCapitalization: 3000,
+            "52WeekHigh": 200,
+            "52WeekLow": 100,
+            beta: 1.1,
+            pbAnnual: 5.2,
+            roeTTM: 18.4,
+            netProfitMarginTTM: 12.7,
+            "totalDebt/totalEquityAnnual": 0.9,
+            "26WeekPriceReturnDaily": 14.3,
+            "52WeekPriceReturnDaily": 22.1,
+          },
+        }),
+      })
     );
-    expect(await getFundamentals("AAPL", "k")).toEqual({ pe: 22.1, marketCap: 3000, week52High: 200, week52Low: 100, beta: 1.1 });
+    expect(await getFundamentals("AAPL", "k")).toEqual({
+      pe: 22.1,
+      marketCap: 3000,
+      week52High: 200,
+      week52Low: 100,
+      beta: 1.1,
+      pb: 5.2,
+      roe: 18.4,
+      netMargin: 12.7,
+      debtToEquity: 0.9,
+      return26Week: 14.3,
+      return52Week: 22.1,
+    });
   });
 
   it("returns null when there's no metric data", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({}) }));
     expect(await getFundamentals("AAPL", "k")).toBeNull();
+  });
+
+  it("defaults the new quant fields to null when Finnhub omits them", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ metric: { peTTM: 22.1, marketCapitalization: 3000, "52WeekHigh": 200, "52WeekLow": 100, beta: 1.1 } }) })
+    );
+    const result = await getFundamentals("AAPL", "k");
+    expect(result).toEqual({
+      pe: 22.1,
+      marketCap: 3000,
+      week52High: 200,
+      week52Low: 100,
+      beta: 1.1,
+      pb: null,
+      roe: null,
+      netMargin: null,
+      debtToEquity: null,
+      return26Week: null,
+      return52Week: null,
+    });
   });
 });
 

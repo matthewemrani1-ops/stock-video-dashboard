@@ -9,7 +9,19 @@ function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
     marketRecap: vi.fn().mockResolvedValue("recap text"),
     marketHealth: vi.fn().mockResolvedValue("health text"),
     getQuote: vi.fn().mockResolvedValue({ price: 200, changePct: 1 }),
-    getFundamentals: vi.fn().mockResolvedValue({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1 }),
+    getFundamentals: vi.fn().mockResolvedValue({
+      pe: 20,
+      marketCap: 3000,
+      week52High: 220,
+      week52Low: 150,
+      beta: 1.1,
+      pb: 3,
+      roe: 20,
+      netMargin: 15,
+      debtToEquity: 0.8,
+      return26Week: 10,
+      return52Week: 20,
+    }),
     getProfile: vi.fn().mockResolvedValue({ industry: "Tech", name: "Apple", weburl: "https://apple.com" }),
     getAnalystConsensus: vi.fn().mockResolvedValue({ buy: 10, hold: 2, sell: 1, period: "2026-07" }),
     getGeneralNews: vi.fn().mockResolvedValue([{ headline: "Fed holds" }]),
@@ -34,7 +46,19 @@ describe("runPipeline", () => {
     expect(doc.status).toBe("complete");
     expect(doc.rankedTickers).toHaveLength(1);
     expect(doc.rankedTickers[0].sym).toBe("AAPL");
-    expect(doc.rankedTickers[0].fundamentals).toEqual({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1 });
+    expect(doc.rankedTickers[0].fundamentals).toEqual({
+      pe: 20,
+      marketCap: 3000,
+      week52High: 220,
+      week52Low: 150,
+      beta: 1.1,
+      pb: 3,
+      roe: 20,
+      netMargin: 15,
+      debtToEquity: 0.8,
+      return26Week: 10,
+      return52Week: 20,
+    });
     expect(doc.screen.AAPL.verdict).toBe("Pass");
     expect(doc.videoWrap).toBe("wrap text");
     expect(doc.marketRecap).toBe("recap text");

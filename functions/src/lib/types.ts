@@ -23,6 +23,12 @@ export interface Fundamentals {
   week52High: number | null;
   week52Low: number | null;
   beta: number | null;
+  pb: number | null;
+  roe: number | null;
+  netMargin: number | null;
+  debtToEquity: number | null;
+  return26Week: number | null;
+  return52Week: number | null;
 }
 
 export interface Profile {
