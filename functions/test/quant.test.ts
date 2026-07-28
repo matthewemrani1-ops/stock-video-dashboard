@@ -68,6 +68,12 @@ describe("computeQualityFactor", () => {
     expect(f?.detail).toBe("ROE 25.0%");
   });
 
+  it("ignores a negative debt/equity ratio (negative shareholder equity)", () => {
+    const f = computeQualityFactor({ ...empty, debtToEquity: -0.5, roe: 25 });
+    expect(f?.score).toBe(100); // only ROE counted, not D/E
+    expect(f?.detail).toBe("ROE 25.0%");
+  });
+
   it("returns null when no quality metrics are available", () => {
     expect(computeQualityFactor(empty)).toBeNull();
   });

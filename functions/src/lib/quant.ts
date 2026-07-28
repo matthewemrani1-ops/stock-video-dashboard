@@ -40,7 +40,7 @@ export function computeQualityFactor(f: Fundamentals): QuantFactor | null {
     scores.push(linearScore(f.netMargin, 20, 0));
     details.push(`Net margin ${f.netMargin.toFixed(1)}%`);
   }
-  if (f.debtToEquity != null) {
+  if (f.debtToEquity != null && f.debtToEquity >= 0) {
     scores.push(linearScore(f.debtToEquity, 0.3, 2.5));
     details.push(`D/E ${f.debtToEquity.toFixed(2)}`);
   }
