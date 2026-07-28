@@ -119,7 +119,7 @@ describe("marketHealth", () => {
     { label: "S&P 500", price: 739.72, changePct: 0.11 },
     { label: "Volatility (VIX proxy)", price: 21.29, changePct: -0.7 },
   ];
-  const fred = [{ label: "Unemployment Rate", value: 4.2, note: "%" }];
+  const fred = [{ label: "Unemployment Rate", value: 4.2, note: "%", unit: "percent" as const, status: "normal" as const, statusLabel: "normal range" }];
 
   it("returns the summary text from the response", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "Markets look calm." }] }) });
@@ -136,7 +136,7 @@ describe("marketHealth", () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body);
-    expect(body.messages[0].content).toBe("S&P 500: $739.72 (+0.11% today)\nVolatility (VIX proxy): $21.29 (-0.70% today)\nUnemployment Rate: 4.20 (%)");
+    expect(body.messages[0].content).toBe("S&P 500: $739.72 (+0.11% today)\nVolatility (VIX proxy): $21.29 (-0.70% today)\nUnemployment Rate: 4.20 — normal range (%)");
   });
 
   it("omits the FRED lines entirely when there's no FRED data", async () => {

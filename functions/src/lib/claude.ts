@@ -1,4 +1,4 @@
-import type { Extraction, QuantFactor, RankedTicker } from "./types.js";
+import type { Extraction, FredIndicator, QuantFactor, RankedTicker } from "./types.js";
 
 interface ClaudeConfig {
   apiKey: string;
@@ -75,12 +75,15 @@ Plain text, no headers, no markdown, 2 short paragraphs max. Do not give buy/sel
 
 export async function marketHealth(
   indexAndMacro: { label: string; price: number; changePct: number }[],
-  fred: { label: string; value: number; note: string }[] | undefined,
+  fred: FredIndicator[] | undefined,
   cfg: ClaudeConfig
 ): Promise<string> {
   let digest = indexAndMacro.map((d) => `${d.label}: $${d.price.toFixed(2)} (${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}% today)`).join("\n");
   if (fred && fred.length > 0) {
-    digest += "\n" + fred.map((d) => `${d.label}: ${d.value.toFixed(2)} (${d.note})`).join("\n");
+    // Include the already-computed statusLabel (not just the raw value and
+    // explanatory note) so Claude doesn't have to infer sign/direction
+    // itself — it was previously calling a positive 10Y-2Y spread "inverted".
+    digest += "\n" + fred.map((d) => `${d.label}: ${d.value.toFixed(2)} — ${d.statusLabel} (${d.note})`).join("\n");
   }
 
   const sys = `You are explaining market health indicators on a personal dashboard for someone who is not a professional trader. Given today's readings for major indices, macro proxy ETFs (VIXY as a volatility/fear proxy, TLT as long Treasuries — rises when investors seek safety, HYG as high-yield credit — falls when credit stress rises, UUP as the dollar index), and where available: the 10Y-2Y Treasury yield spread (negative/inverted has historically preceded recessions), the unemployment rate, the Fed funds rate, CPI inflation (year-over-year, above ~3% is elevated vs. the Fed's ~2% target), initial jobless claims (a fast-moving weekly labor market signal — rising claims can signal labor weakness), and industrial production (year-over-year, negative = manufacturing contraction), write:
