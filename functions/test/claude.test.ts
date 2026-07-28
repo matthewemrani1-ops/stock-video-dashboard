@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { extractTickers, videoWrap, marketRecap, marketHealth } from "../src/lib/claude.js";
+import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "../src/lib/claude.js";
 
 const cfg = { apiKey: "key123", model: "claude-haiku-4-5-20251001" };
 
@@ -164,6 +164,47 @@ describe("marketHealth", () => {
 2. A short "what to watch for" note: 2-3 concrete signs someone should look for in these same indicators if conditions were shifting toward a recession, versus signs of a healthy bull market.
 Plain text, no headers, no markdown, 2 short paragraphs max. Be educational, not alarmist. Do not give investment advice.`);
     expect(body.max_tokens).toBe(400);
+    expect(body.model).toBe("claude-haiku-4-5-20251001");
+  });
+});
+
+describe("quantExplanation", () => {
+  const factors = [
+    { category: "Value" as const, score: 62, detail: "P/E 20.0, P/B 4.0" },
+    { category: "Low-Volatility" as const, score: 75, detail: "Beta 1.10" },
+  ];
+
+  it("returns the explanation text from the response", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "AAPL scores well on low volatility." }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const text = await quantExplanation("AAPL", factors, 68, cfg);
+    expect(text).toBe("AAPL scores well on low volatility.");
+  });
+
+  it("builds the digest from the ticker, composite score, and factor breakdown", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await quantExplanation("AAPL", factors, 68, cfg);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe("AAPL — composite score 68/100\nValue: 62/100 (P/E 20.0, P/B 4.0)\nLow-Volatility: 75/100 (Beta 1.10)");
+  });
+
+  it("sends the correct system prompt, max_tokens, and model in the request body", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await quantExplanation("AAPL", factors, 68, cfg);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+
+    expect(body.system).toBe(
+      `You are writing a short factual explanation of a quantitative stock score for a personal dashboard. You will be given a ticker's composite quant score (0-100, made up of up to four equally-weighted factor categories: Value, Quality, Momentum, Low-Volatility) and the underlying metric values behind each factor. Write a 2-3 sentence explanation of what's driving the score, grounded STRICTLY in these numbers — do not add your own independent opinion, prediction, or buy/sell recommendation. Plain text, no headers, no markdown.`
+    );
+    expect(body.max_tokens).toBe(200);
     expect(body.model).toBe("claude-haiku-4-5-20251001");
   });
 });

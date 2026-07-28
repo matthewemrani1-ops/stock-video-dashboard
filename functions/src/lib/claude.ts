@@ -1,4 +1,4 @@
-import type { Extraction, RankedTicker } from "./types.js";
+import type { Extraction, QuantFactor, RankedTicker } from "./types.js";
 
 interface ClaudeConfig {
   apiKey: string;
@@ -89,4 +89,12 @@ export async function marketHealth(
 Plain text, no headers, no markdown, 2 short paragraphs max. Be educational, not alarmist. Do not give investment advice.`;
 
   return (await callClaude(sys, digest, 400, cfg)).trim();
+}
+
+export async function quantExplanation(sym: string, factors: QuantFactor[], score: number, cfg: ClaudeConfig): Promise<string> {
+  const digest = factors.map((f) => `${f.category}: ${f.score.toFixed(0)}/100 (${f.detail})`).join("\n");
+
+  const sys = `You are writing a short factual explanation of a quantitative stock score for a personal dashboard. You will be given a ticker's composite quant score (0-100, made up of up to four equally-weighted factor categories: Value, Quality, Momentum, Low-Volatility) and the underlying metric values behind each factor. Write a 2-3 sentence explanation of what's driving the score, grounded STRICTLY in these numbers — do not add your own independent opinion, prediction, or buy/sell recommendation. Plain text, no headers, no markdown.`;
+
+  return (await callClaude(sys, `${sym} — composite score ${score.toFixed(0)}/100\n${digest}`, 200, cfg)).trim();
 }
