@@ -24,6 +24,14 @@ function viewChip(v) {
   return `<span class="chip ${cls}">${label}</span>`;
 }
 
+function formatFredValue(cd) {
+  if (cd.unit === "count-k") {
+    return `${Math.round(cd.value / 1000)}K`;
+  }
+  const sign = cd.unit === "percent-signed" && cd.value >= 0 ? "+" : "";
+  return `${sign}${cd.value.toFixed(1)}%`;
+}
+
 function renderScreenBlock(screenResult) {
   if (!screenResult) return "";
   return `
@@ -133,7 +141,7 @@ function renderDigest(docData) {
   }
   if (docData.fred) {
     document.getElementById("fredStrip").innerHTML = docData.fred
-      .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${cd.value.toFixed(2)}</div><div class="if">${esc(cd.note)}</div></div>`)
+      .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${formatFredValue(cd)}</div><div class="if ${cd.status}">${esc(cd.statusLabel)}</div></div>`)
       .join("");
   }
   if (docData.marketHealth) {
