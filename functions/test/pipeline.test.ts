@@ -99,8 +99,25 @@ describe("runPipeline", () => {
     expect(doc.rankedTickers[0].fundamentals).toBeUndefined();
   });
 
-  it("leaves fred undefined when FRED calls fail, without failing the run", async () => {
-    const deps = baseDeps({ fredLatest: vi.fn().mockRejectedValue(new Error("FRED 500")) });
+  it("keeps the other FRED indicators when only one call fails", async () => {
+    const deps = baseDeps({
+      fredLatest: vi.fn().mockImplementation((seriesId: string) => {
+        if (seriesId === "UNRATE") return Promise.reject(new Error("FRED 500"));
+        return Promise.resolve({ value: 4.3, date: "2026-07-20" });
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.fred).toHaveLength(5);
+    expect(doc.fred?.some((f) => f.label === "Unemployment Rate")).toBe(false);
+  });
+
+  it("leaves fred undefined when every FRED call fails, without failing the run", async () => {
+    const deps = baseDeps({
+      fredLatest: vi.fn().mockRejectedValue(new Error("FRED 500")),
+      fredYoY: vi.fn().mockRejectedValue(new Error("FRED 500")),
+      fredWithPrior: vi.fn().mockRejectedValue(new Error("FRED 500")),
+    });
     const doc = await runPipeline(input, deps);
     expect(doc.status).toBe("complete");
     expect(doc.fred).toBeUndefined();

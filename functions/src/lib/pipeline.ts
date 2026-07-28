@@ -119,27 +119,40 @@ async function loadIndexAndMacroQuotes(priceKey: string, deps: PipelineDeps): Pr
 }
 
 async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): Promise<DigestDoc["fred"] | undefined> {
-  try {
-    const [spread, unrate, fedfunds, cpi, claims, indpro] = await Promise.all([
-      deps.fredLatest("T10Y2Y", secrets.fredKey),
-      deps.fredLatest("UNRATE", secrets.fredKey),
-      deps.fredLatest("FEDFUNDS", secrets.fredKey),
-      deps.fredYoY("CPIAUCSL", secrets.fredKey),
-      deps.fredWithPrior("ICSA", secrets.fredKey),
-      deps.fredYoY("INDPRO", secrets.fredKey),
-    ]);
-    const claimsUp = claims.value > claims.prior;
-    return [
-      { label: "10Y-2Y Yield Spread", value: spread.value, note: "negative = inverted curve, historically a recession warning" },
-      { label: "Unemployment Rate", value: unrate.value, note: "%" },
-      { label: "Fed Funds Rate", value: fedfunds.value, note: "% — the Fed's benchmark interest rate" },
-      { label: "CPI Inflation", value: cpi.value, note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target" },
-      { label: "Initial Jobless Claims", value: claims.value, note: `weekly new unemployment claims, ${claimsUp ? "rising" : "falling"} vs. prior week` },
-      { label: "Industrial Production", value: indpro.value, note: "% year-over-year — manufacturing/production health proxy" },
-    ];
-  } catch {
-    return undefined;
+  const [spread, unrate, fedfunds, cpi, claims, indpro] = await Promise.allSettled([
+    deps.fredLatest("T10Y2Y", secrets.fredKey),
+    deps.fredLatest("UNRATE", secrets.fredKey),
+    deps.fredLatest("FEDFUNDS", secrets.fredKey),
+    deps.fredYoY("CPIAUCSL", secrets.fredKey),
+    deps.fredWithPrior("ICSA", secrets.fredKey),
+    deps.fredYoY("INDPRO", secrets.fredKey),
+  ]);
+
+  // Each indicator is independent, so one transient FRED failure only drops
+  // that indicator instead of wiping the whole strip (matches the isolation
+  // pattern used for price/fundamentals/profile/analyst/quant above).
+  const results: NonNullable<DigestDoc["fred"]> = [];
+  if (spread.status === "fulfilled") {
+    results.push({ label: "10Y-2Y Yield Spread", value: spread.value.value, note: "negative = inverted curve, historically a recession warning" });
   }
+  if (unrate.status === "fulfilled") {
+    results.push({ label: "Unemployment Rate", value: unrate.value.value, note: "%" });
+  }
+  if (fedfunds.status === "fulfilled") {
+    results.push({ label: "Fed Funds Rate", value: fedfunds.value.value, note: "% — the Fed's benchmark interest rate" });
+  }
+  if (cpi.status === "fulfilled") {
+    results.push({ label: "CPI Inflation", value: cpi.value.value, note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target" });
+  }
+  if (claims.status === "fulfilled") {
+    const claimsUp = claims.value.value > claims.value.prior;
+    results.push({ label: "Initial Jobless Claims", value: claims.value.value, note: `weekly new unemployment claims, ${claimsUp ? "rising" : "falling"} vs. prior week` });
+  }
+  if (indpro.status === "fulfilled") {
+    results.push({ label: "Industrial Production", value: indpro.value.value, note: "% year-over-year — manufacturing/production health proxy" });
+  }
+
+  return results.length > 0 ? results : undefined;
 }
 
 export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Promise<DigestDoc> {
