@@ -82,6 +82,15 @@ export interface ScreenResult {
   total: number;
 }
 
+export interface FredIndicator {
+  label: string;
+  value: number;
+  note: string;
+  unit: "percent-signed" | "percent" | "count-k";
+  status: "normal" | "warning";
+  statusLabel: string;
+}
+
 export interface DigestDoc {
   status: "running" | "complete" | "error";
   errorMessage?: string;
@@ -91,7 +100,7 @@ export interface DigestDoc {
   videoWrap?: string;
   marketRecap?: string;
   marketHealth?: string;
-  fred?: { label: string; value: number; note: string }[];
+  fred?: FredIndicator[];
   skippedReelCount: number;
   startedAt: number;
   completedAt?: number;

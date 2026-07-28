@@ -207,3 +207,111 @@ describe("runPipeline — quant score", () => {
     expect(doc.rankedTickers[0].quant?.explanation).toBeUndefined();
   });
 });
+
+describe("runPipeline — FRED indicator status", () => {
+  it("flags an inverted 10Y-2Y spread as a warning", async () => {
+    const deps = baseDeps({
+      fredLatest: vi.fn().mockImplementation((seriesId: string) => {
+        if (seriesId === "T10Y2Y") return Promise.resolve({ value: -0.15, date: "2026-07-20" });
+        return Promise.resolve({ value: 4.3, date: "2026-07-20" });
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    const spread = doc.fred?.find((f) => f.label === "10Y-2Y Yield Spread");
+    expect(spread).toEqual({
+      label: "10Y-2Y Yield Spread",
+      value: -0.15,
+      note: "negative = inverted curve, historically a recession warning",
+      unit: "percent-signed",
+      status: "warning",
+      statusLabel: "⚠ inverted",
+    });
+  });
+
+  it("treats a positive 10Y-2Y spread as normal", async () => {
+    const doc = await runPipeline(input, baseDeps());
+    const spread = doc.fred?.find((f) => f.label === "10Y-2Y Yield Spread");
+    expect(spread?.status).toBe("normal");
+    expect(spread?.statusLabel).toBe("normal range");
+  });
+
+  it("flags elevated unemployment (>5.0%) as a warning", async () => {
+    const deps = baseDeps({
+      fredLatest: vi.fn().mockImplementation((seriesId: string) => {
+        if (seriesId === "UNRATE") return Promise.resolve({ value: 5.5, date: "2026-07-20" });
+        return Promise.resolve({ value: 4.3, date: "2026-07-20" });
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    const unrate = doc.fred?.find((f) => f.label === "Unemployment Rate");
+    expect(unrate).toEqual({
+      label: "Unemployment Rate",
+      value: 5.5,
+      note: "%",
+      unit: "percent",
+      status: "warning",
+      statusLabel: "⚠ elevated",
+    });
+  });
+
+  it("never flags Fed Funds Rate as a warning, regardless of value", async () => {
+    const deps = baseDeps({
+      fredLatest: vi.fn().mockImplementation((seriesId: string) => {
+        if (seriesId === "FEDFUNDS") return Promise.resolve({ value: 20, date: "2026-07-20" });
+        return Promise.resolve({ value: 4.3, date: "2026-07-20" });
+      }),
+    });
+    const doc = await runPipeline(input, deps);
+    const fedfunds = doc.fred?.find((f) => f.label === "Fed Funds Rate");
+    expect(fedfunds).toEqual({
+      label: "Fed Funds Rate",
+      value: 20,
+      note: "% — the Fed's benchmark interest rate",
+      unit: "percent",
+      status: "normal",
+      statusLabel: "normal range",
+    });
+  });
+
+  it("flags elevated CPI (>3.0%) as a warning and renames the label to include (YoY)", async () => {
+    const deps = baseDeps({ fredYoY: vi.fn().mockResolvedValue({ value: 3.5, date: "2026-07-20" }) });
+    const doc = await runPipeline(input, deps);
+    const cpi = doc.fred?.find((f) => f.label === "CPI Inflation (YoY)");
+    expect(cpi).toEqual({
+      label: "CPI Inflation (YoY)",
+      value: 3.5,
+      note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target",
+      unit: "percent-signed",
+      status: "warning",
+      statusLabel: "⚠ elevated",
+    });
+  });
+
+  it("flags elevated jobless claims (>275000) as a warning", async () => {
+    const deps = baseDeps({ fredWithPrior: vi.fn().mockResolvedValue({ value: 300000, prior: 280000, date: "2026-07-20" }) });
+    const doc = await runPipeline(input, deps);
+    const claims = doc.fred?.find((f) => f.label === "Initial Jobless Claims");
+    expect(claims).toEqual({
+      label: "Initial Jobless Claims",
+      value: 300000,
+      note: "weekly new unemployment claims, rising vs. prior week",
+      unit: "count-k",
+      status: "warning",
+      statusLabel: "⚠ elevated",
+    });
+  });
+
+  it("flags contracting industrial production (<0%) as a warning and renames the label to include (YoY)", async () => {
+    const deps = baseDeps({ fredYoY: vi.fn().mockResolvedValue({ value: -1.2, date: "2026-07-20" }) });
+    const doc = await runPipeline(input, deps);
+    const indpro = doc.fred?.find((f) => f.label === "Industrial Production (YoY)");
+    expect(indpro).toEqual({
+      label: "Industrial Production (YoY)",
+      value: -1.2,
+      note: "% year-over-year — manufacturing/production health proxy",
+      unit: "percent-signed",
+      status: "warning",
+      statusLabel: "⚠ contracting",
+    });
+  });
+});

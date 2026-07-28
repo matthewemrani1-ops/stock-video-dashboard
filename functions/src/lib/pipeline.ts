@@ -118,6 +118,10 @@ async function loadIndexAndMacroQuotes(priceKey: string, deps: PipelineDeps): Pr
   return results.filter((r): r is { label: string; price: number; changePct: number } => r !== null);
 }
 
+function classifyFred(isWarning: boolean, warningLabel: string): { status: "normal" | "warning"; statusLabel: string } {
+  return isWarning ? { status: "warning", statusLabel: warningLabel } : { status: "normal", statusLabel: "normal range" };
+}
+
 async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): Promise<DigestDoc["fred"] | undefined> {
   const [spread, unrate, fedfunds, cpi, claims, indpro] = await Promise.allSettled([
     deps.fredLatest("T10Y2Y", secrets.fredKey),
@@ -133,33 +137,70 @@ async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): 
   // pattern used for price/fundamentals/profile/analyst/quant above).
   const results: NonNullable<DigestDoc["fred"]> = [];
   if (spread.status === "fulfilled") {
-    results.push({ label: "10Y-2Y Yield Spread", value: spread.value.value, note: "negative = inverted curve, historically a recession warning" });
+    results.push({
+      label: "10Y-2Y Yield Spread",
+      value: spread.value.value,
+      note: "negative = inverted curve, historically a recession warning",
+      unit: "percent-signed",
+      ...classifyFred(spread.value.value < 0, "⚠ inverted"),
+    });
   } else {
     console.error("FRED T10Y2Y failed:", spread.reason);
   }
   if (unrate.status === "fulfilled") {
-    results.push({ label: "Unemployment Rate", value: unrate.value.value, note: "%" });
+    results.push({
+      label: "Unemployment Rate",
+      value: unrate.value.value,
+      note: "%",
+      unit: "percent",
+      ...classifyFred(unrate.value.value > 5.0, "⚠ elevated"),
+    });
   } else {
     console.error("FRED UNRATE failed:", unrate.reason);
   }
   if (fedfunds.status === "fulfilled") {
-    results.push({ label: "Fed Funds Rate", value: fedfunds.value.value, note: "% — the Fed's benchmark interest rate" });
+    results.push({
+      label: "Fed Funds Rate",
+      value: fedfunds.value.value,
+      note: "% — the Fed's benchmark interest rate",
+      unit: "percent",
+      status: "normal",
+      statusLabel: "normal range",
+    });
   } else {
     console.error("FRED FEDFUNDS failed:", fedfunds.reason);
   }
   if (cpi.status === "fulfilled") {
-    results.push({ label: "CPI Inflation", value: cpi.value.value, note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target" });
+    results.push({
+      label: "CPI Inflation (YoY)",
+      value: cpi.value.value,
+      note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target",
+      unit: "percent-signed",
+      ...classifyFred(cpi.value.value > 3.0, "⚠ elevated"),
+    });
   } else {
     console.error("FRED CPIAUCSL failed:", cpi.reason);
   }
   if (claims.status === "fulfilled") {
     const claimsUp = claims.value.value > claims.value.prior;
-    results.push({ label: "Initial Jobless Claims", value: claims.value.value, note: `weekly new unemployment claims, ${claimsUp ? "rising" : "falling"} vs. prior week` });
+    results.push({
+      label: "Initial Jobless Claims",
+      value: claims.value.value,
+      note: `weekly new unemployment claims, ${claimsUp ? "rising" : "falling"} vs. prior week`,
+      unit: "count-k",
+      ...classifyFred(claims.value.value > 275000, "⚠ elevated"),
+    });
   } else {
     console.error("FRED ICSA failed:", claims.reason);
   }
   if (indpro.status === "fulfilled") {
-    results.push({ label: "Industrial Production", value: indpro.value.value, note: "% year-over-year — manufacturing/production health proxy" });
+    results.push({
+      label: "Industrial Production (YoY)",
+      value: indpro.value.value,
+      note: "% year-over-year — manufacturing/production health proxy",
+      unit: "percent-signed",
+      ...classifyFred(indpro.value.value < 0, "⚠ contracting"),
+    });
   } else {
     console.error("FRED INDPRO failed:", indpro.reason);
   }
