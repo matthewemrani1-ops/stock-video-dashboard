@@ -35,6 +35,19 @@ function renderScreenBlock(screenResult) {
     </div>`;
 }
 
+function renderQuantBlock(quant) {
+  if (!quant) return "";
+  return `
+    <div class="quant-row">
+      <span class="ak">Quant score — ${quant.score.toFixed(0)}/100 (${esc(quant.verdict)})</span>
+      <div class="quant-factors">
+        ${quant.factors.map((f) => `<span class="qfactor">${esc(f.category)}: ${f.score.toFixed(0)}/100 <span class="qfactor-detail">(${esc(f.detail)})</span></span>`).join("")}
+      </div>
+      ${quant.explanation ? `<div class="quant-explain">${esc(quant.explanation)}</div>` : ""}
+      <div class="quant-note">Equal-weighted across available factors — not a backtested model. Not financial advice.</div>
+    </div>`;
+}
+
 function renderDigest(docData) {
   const results = document.getElementById("results");
   const lastRun = document.getElementById("lastRun");
@@ -76,6 +89,7 @@ function renderDigest(docData) {
     const an = s.analyst;
     const screenResult = docData.screen?.[s.sym];
     const screenChip = screenResult ? `<span class="chip screen-${screenResult.verdict.toLowerCase()}">${screenResult.verdict}</span>` : "";
+    const quantChip = s.quant ? `<span class="chip quant-${s.quant.verdict.toLowerCase()}">Quant ${esc(s.quant.verdict)}</span>` : "";
     const fundHtml = f
       ? `
       <div class="fund-row">
@@ -101,11 +115,11 @@ function renderDigest(docData) {
         <div class="card-head" onclick="document.getElementById('c${i}').classList.toggle('open')">
           <div class="rank">${i + 1}</div>
           <div class="tick"><div class="sym">${esc(s.sym)}</div><div class="co">${esc(s.company || "")}</div></div>
-          <div class="headmid"><span class="chip count">${s.count} video${s.count > 1 ? "s" : ""}</span>${viewChip(dom)}${screenChip}</div>
+          <div class="headmid"><span class="chip count">${s.count} video${s.count > 1 ? "s" : ""}</span>${viewChip(dom)}${screenChip}${quantChip}</div>
           <div class="price"><div class="p">${s.price ? "$" + s.price.toFixed(2) : "—"}</div><div class="l">${s.price ? "current" : "no price"}</div></div>
           <div class="chev">▾</div>
         </div>
-        <div class="card-body"><div class="inner">${renderScreenBlock(screenResult)}${fundHtml}${analystHtml}${takesHtml}</div></div>
+        <div class="card-body"><div class="inner">${renderScreenBlock(screenResult)}${renderQuantBlock(s.quant)}${fundHtml}${analystHtml}${takesHtml}</div></div>
       </div>`;
   });
   results.innerHTML = html;
