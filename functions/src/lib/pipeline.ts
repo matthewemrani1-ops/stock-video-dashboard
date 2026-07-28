@@ -134,22 +134,34 @@ async function loadFred(secrets: PipelineInput["secrets"], deps: PipelineDeps): 
   const results: NonNullable<DigestDoc["fred"]> = [];
   if (spread.status === "fulfilled") {
     results.push({ label: "10Y-2Y Yield Spread", value: spread.value.value, note: "negative = inverted curve, historically a recession warning" });
+  } else {
+    console.error("FRED T10Y2Y failed:", spread.reason);
   }
   if (unrate.status === "fulfilled") {
     results.push({ label: "Unemployment Rate", value: unrate.value.value, note: "%" });
+  } else {
+    console.error("FRED UNRATE failed:", unrate.reason);
   }
   if (fedfunds.status === "fulfilled") {
     results.push({ label: "Fed Funds Rate", value: fedfunds.value.value, note: "% — the Fed's benchmark interest rate" });
+  } else {
+    console.error("FRED FEDFUNDS failed:", fedfunds.reason);
   }
   if (cpi.status === "fulfilled") {
     results.push({ label: "CPI Inflation", value: cpi.value.value, note: "% year-over-year — above ~3% is elevated vs. the Fed's ~2% target" });
+  } else {
+    console.error("FRED CPIAUCSL failed:", cpi.reason);
   }
   if (claims.status === "fulfilled") {
     const claimsUp = claims.value.value > claims.value.prior;
     results.push({ label: "Initial Jobless Claims", value: claims.value.value, note: `weekly new unemployment claims, ${claimsUp ? "rising" : "falling"} vs. prior week` });
+  } else {
+    console.error("FRED ICSA failed:", claims.reason);
   }
   if (indpro.status === "fulfilled") {
     results.push({ label: "Industrial Production", value: indpro.value.value, note: "% year-over-year — manufacturing/production health proxy" });
+  } else {
+    console.error("FRED INDPRO failed:", indpro.reason);
   }
 
   return results.length > 0 ? results : undefined;
