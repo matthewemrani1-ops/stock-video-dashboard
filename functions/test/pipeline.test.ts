@@ -28,6 +28,7 @@ function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
     fredLatest: vi.fn().mockResolvedValue({ value: 4.3, date: "2026-07-20" }),
     fredYoY: vi.fn().mockResolvedValue({ value: 2.9, date: "2026-07-20" }),
     fredWithPrior: vi.fn().mockResolvedValue({ value: 220000, prior: 215000, date: "2026-07-20" }),
+    quantExplanation: vi.fn().mockResolvedValue("Solid low-volatility profile driven by beta near 1.0."),
     ...overrides,
   };
 }
@@ -151,5 +152,41 @@ describe("runPipeline", () => {
     const doc = await runPipeline(input, deps);
     expect(doc.status).toBe("complete");
     expect(doc.rankedTickers).toEqual([]);
+  });
+});
+
+describe("runPipeline — quant score", () => {
+  it("attaches a quant score with an explanation to each ranked ticker", async () => {
+    const doc = await runPipeline(input, baseDeps());
+    expect(doc.rankedTickers[0].quant).toBeDefined();
+    expect(doc.rankedTickers[0].quant?.factors.length).toBeGreaterThan(0);
+    expect(doc.rankedTickers[0].quant?.explanation).toBe("Solid low-volatility profile driven by beta near 1.0.");
+  });
+
+  it("passes quantExplanation the computed factors and score", async () => {
+    const quantExplanationMock = vi.fn().mockResolvedValue("explanation");
+    const deps = baseDeps({ quantExplanation: quantExplanationMock });
+    await runPipeline(input, deps);
+
+    expect(quantExplanationMock).toHaveBeenCalledTimes(1);
+    const [sym, factors, score] = quantExplanationMock.mock.calls[0];
+    expect(sym).toBe("AAPL");
+    expect(Array.isArray(factors)).toBe(true);
+    expect(typeof score).toBe("number");
+  });
+
+  it("leaves quant unset when fundamentals are unavailable", async () => {
+    const deps = baseDeps({ getFundamentals: vi.fn().mockRejectedValue(new Error("Finnhub 429")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers[0].quant).toBeUndefined();
+  });
+
+  it("keeps the score and factors but omits the explanation when the explanation call fails", async () => {
+    const deps = baseDeps({ quantExplanation: vi.fn().mockRejectedValue(new Error("AI 500")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers[0].quant).toBeDefined();
+    expect(doc.rankedTickers[0].quant?.explanation).toBeUndefined();
   });
 });

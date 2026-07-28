@@ -1,6 +1,7 @@
-import type { DigestDoc, Extraction, RankedTicker } from "./types.js";
+import type { DigestDoc, Extraction, QuantFactor, RankedTicker } from "./types.js";
 import { rankMentions } from "./ranking.js";
 import { screenStock } from "./screen.js";
+import { scoreQuant } from "./quant.js";
 
 export interface PipelineInput {
   dateLabel: string;
@@ -24,6 +25,7 @@ export interface PipelineDeps {
   getFundamentals: (sym: string, key: string) => Promise<RankedTicker["fundamentals"] | null>;
   getProfile: (sym: string, key: string) => Promise<RankedTicker["profile"] | null>;
   getAnalystConsensus: (sym: string, key: string) => Promise<RankedTicker["analyst"] | null>;
+  quantExplanation: (sym: string, factors: QuantFactor[], score: number, cfg: { apiKey: string; model: string }) => Promise<string>;
   getGeneralNews: (key: string) => Promise<{ headline: string; summary?: string }[]>;
   fredLatest: (seriesId: string, apiKey: string) => Promise<{ value: number; date: string }>;
   fredYoY: (seriesId: string, apiKey: string) => Promise<{ value: number; date: string }>;
@@ -207,6 +209,16 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
       if (a) ticker.analyst = a;
     } catch {
       // leave analyst unset
+    }
+
+    const quant = scoreQuant(ticker.fundamentals ?? null);
+    if (quant) {
+      ticker.quant = quant;
+      try {
+        ticker.quant.explanation = await deps.quantExplanation(ticker.sym, quant.factors, quant.score, claudeCfg);
+      } catch {
+        // leave explanation unset -> UI shows score/breakdown without narrative text
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { runPipeline, type PipelineDeps } from "./lib/pipeline.js";
 import { runActor } from "./lib/apify.js";
-import { extractTickers, videoWrap, marketRecap, marketHealth } from "./lib/claude.js";
+import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "./lib/claude.js";
 import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "./lib/finnhub.js";
 import { fredLatest, fredYoY, fredWithPrior } from "./lib/fred.js";
 import type { DigestDoc } from "./lib/types.js";
@@ -67,6 +67,7 @@ const deps: PipelineDeps = {
   getFundamentals,
   getProfile,
   getAnalystConsensus,
+  quantExplanation,
   getGeneralNews,
   fredLatest,
   fredYoY,
