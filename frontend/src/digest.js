@@ -133,7 +133,7 @@ function renderDigest(docData) {
   }
   if (docData.fred) {
     document.getElementById("fredStrip").innerHTML = docData.fred
-      .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${cd.value.toFixed(2)}</div></div>`)
+      .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${cd.value.toFixed(2)}</div><div class="if">${esc(cd.note)}</div></div>`)
       .join("");
   }
   if (docData.marketHealth) {
