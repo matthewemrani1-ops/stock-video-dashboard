@@ -34,22 +34,22 @@ function cutoffDate(now: Date): Date {
   return d;
 }
 
-function isWithinWindow(dateStr: string | undefined, cutoff: Date): boolean {
+function isWithinWindow(dateStr: string | undefined, cutoff: Date, now: Date): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
-  return !isNaN(d.getTime()) && d >= cutoff;
+  return !isNaN(d.getTime()) && d >= cutoff && d <= now;
 }
 
-function computeTopHolding(allTrades: RawTrade[], representative: string, cutoff: Date): string | null {
+function computeTopHolding(allTrades: RawTrade[], representative: string, cutoff: Date, now: Date): string | null {
   const memberTrades = allTrades.filter(
-    (t) => t.Representative === representative && isWithinWindow(t.TransactionDate, cutoff) && t.TickerType === "ST" && !!t.Ticker
+    (t) => t.Representative === representative && isWithinWindow(t.TransactionDate, cutoff, now) && t.TickerType === "ST" && !!t.Ticker
   );
 
   const holdings = new Map<string, number>();
   for (const t of memberTrades) {
     const ticker = t.Ticker as string;
     const tx = (t.Transaction || "").toLowerCase();
-    const amt = toNumber(t.Amount) || 1000;
+    const amt = t.Amount === undefined || t.Amount === null || t.Amount === "" ? 1000 : toNumber(t.Amount);
     const current = holdings.get(ticker) || 0;
     if (tx.includes("purchase")) {
       holdings.set(ticker, current + amt);
@@ -74,7 +74,7 @@ export function computeCongressRanking(trades: RawTrade[], now: Date = new Date(
 
   const purchases = trades.filter(
     (t) =>
-      isWithinWindow(t.TransactionDate, cutoff) &&
+      isWithinWindow(t.TransactionDate, cutoff, now) &&
       typeof t.Transaction === "string" &&
       t.Transaction.toLowerCase().includes("purchase") &&
       !!t.Ticker &&
@@ -101,7 +101,7 @@ export function computeCongressRanking(trades: RawTrade[], now: Date = new Date(
       chamber: memberTrades[0].House || "?",
       returnPct,
       tradeCount: memberTrades.length,
-      topHolding: computeTopHolding(trades, name, cutoff),
+      topHolding: computeTopHolding(trades, name, cutoff, now),
     };
   });
 

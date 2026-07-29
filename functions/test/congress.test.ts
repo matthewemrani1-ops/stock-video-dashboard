@@ -88,6 +88,32 @@ describe("computeCongressRanking", () => {
     expect(result).toHaveLength(1); // still ranked (has a qualifying purchase)
     expect(result[0].topHolding).toBeNull();
   });
+
+  it("excludes trades with future TransactionDate from the 30-day window", () => {
+    // A trade dated in the future should not be included in the ranking
+    const futureDate = new Date(NOW);
+    futureDate.setDate(futureDate.getDate() + 5);
+    const trades = [
+      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
+      { Representative: "Bob", Ticker: "TSLA", Transaction: "Purchase", Amount: 10000, TransactionDate: futureDate.toISOString(), Party: "R", House: "Senate", TickerType: "ST", PriceChange: 20 },
+    ];
+    const result = computeCongressRanking(trades, NOW);
+    expect(result.map((r) => r.name)).toEqual(["Alice"]);
+  });
+
+  it("correctly identifies topHolding when one ticker has Amount: 0 and another has nonzero Amount", () => {
+    // A member with Amount: 0 purchase on one ticker and Amount: 500 on another
+    // should have the nonzero ticker as topHolding, not the zero-amount one
+    const trades = [
+      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 0, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
+      { Representative: "Alice", Ticker: "MSFT", Transaction: "Purchase", Amount: 500, TransactionDate: daysAgo(4), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
+    ];
+    const result = computeCongressRanking(trades, NOW);
+    expect(result).toHaveLength(1);
+    // Without the fix, AAPL gets 0+1000=1000 (via falsy coercion) and wins as topHolding
+    // With the fix, AAPL gets 0 and MSFT gets 500, so MSFT is topHolding
+    expect(result[0].topHolding).toBe("MSFT");
+  });
 });
 
 describe("getTopCongressTraders", () => {
