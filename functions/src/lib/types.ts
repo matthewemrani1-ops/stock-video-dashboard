@@ -57,6 +57,26 @@ export interface Analyst {
   period: string;
 }
 
+export interface TrendPoint {
+  period: string;
+  value: number;
+}
+
+export interface HistoricalMetrics {
+  netMargin: TrendPoint[];
+  grossMargin: TrendPoint[];
+  roic: TrendPoint[];
+  netDebtToEquity: TrendPoint[];
+  pe: TrendPoint[];
+  pb: TrendPoint[];
+  pfcf: TrendPoint[];
+}
+
+export interface PeerComparison {
+  sym: string;
+  fundamentals: Fundamentals;
+}
+
 export interface RankedTicker {
   sym: string;
   company: string;

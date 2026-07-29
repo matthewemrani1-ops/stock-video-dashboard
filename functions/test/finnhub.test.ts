@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "../src/lib/finnhub.js";
+import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews, getPeers, getHistoricalMetrics } from "../src/lib/finnhub.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -115,5 +115,77 @@ describe("getGeneralNews", () => {
   it("returns the headline list", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => [{ headline: "Fed holds rates", summary: "..." }] }));
     expect(await getGeneralNews("k")).toEqual([{ headline: "Fed holds rates", summary: "..." }]);
+  });
+});
+
+describe("getPeers", () => {
+  it("returns peer tickers, excluding the symbol itself, capped to 6", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["AAPL", "DELL", "SNDK", "WDC", "HPE", "NTAP", "HPQ", "P", "SMCI"],
+      })
+    );
+    expect(await getPeers("AAPL", "k")).toEqual(["DELL", "SNDK", "WDC", "HPE", "NTAP", "HPQ"]);
+  });
+
+  it("returns an empty array when the response isn't an array", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({}) }));
+    expect(await getPeers("AAPL", "k")).toEqual([]);
+  });
+});
+
+describe("getHistoricalMetrics", () => {
+  it("extracts the last 5 years of each tracked metric from series.annual", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          series: {
+            annual: {
+              netMargin: [
+                { period: "2025-09-27", v: 0.2692 },
+                { period: "2024-09-28", v: 0.2397 },
+                { period: "2023-09-30", v: 0.2531 },
+                { period: "2022-09-24", v: 0.2531 },
+                { period: "2021-09-25", v: 0.2588 },
+                { period: "2020-09-26", v: 0.2091 },
+              ],
+              grossMargin: [{ period: "2025-09-27", v: 0.4621 }],
+              roic: [{ period: "2025-09-27", v: 0.6451 }],
+              netDebtToTotalEquity: [{ period: "2025-09-27", v: 0.8674 }],
+              pe: [{ period: "2025-09-27", v: 33.5574 }],
+              pb: [{ period: "2025-09-27", v: 50.978 }],
+              pfcf: [{ period: "2025-09-27", v: 38.0568 }],
+            },
+          },
+        }),
+      })
+    );
+    const result = await getHistoricalMetrics("AAPL", "k");
+    expect(result?.netMargin).toEqual([
+      { period: "2025-09-27", value: 0.2692 },
+      { period: "2024-09-28", value: 0.2397 },
+      { period: "2023-09-30", value: 0.2531 },
+      { period: "2022-09-24", value: 0.2531 },
+      { period: "2021-09-25", value: 0.2588 },
+    ]);
+    expect(result?.netDebtToEquity).toEqual([{ period: "2025-09-27", value: 0.8674 }]);
+  });
+
+  it("returns null when there's no series.annual data", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({}) }));
+    expect(await getHistoricalMetrics("AAPL", "k")).toBeNull();
+  });
+
+  it("defaults a missing field to an empty array", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ series: { annual: { netMargin: [{ period: "2025-09-27", v: 0.27 }] } } }) })
+    );
+    const result = await getHistoricalMetrics("AAPL", "k");
+    expect(result?.pfcf).toEqual([]);
   });
 });
