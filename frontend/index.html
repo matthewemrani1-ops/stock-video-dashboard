@@ -209,6 +209,16 @@
   .quant-explain{font-size:13.5px;line-height:1.55;color:var(--ink);margin-top:10px}
   .quant-note{font-size:11px;color:var(--faint);margin-top:8px}
 
+  .deepdive{border-bottom:1px solid var(--line)}
+  .deepdive-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px 12px 58px;cursor:pointer;font-size:11.5px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em}
+  .dd-chev{color:var(--faint);transition:transform .22s;font-size:12px}
+  .deepdive.open .dd-chev{transform:rotate(180deg);color:var(--gold)}
+  .deepdive-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s ease}
+  .deepdive.open .deepdive-body{grid-template-rows:1fr}
+  .deepdive-body > .inner{overflow:hidden}
+  .dd-section{padding:10px 20px 10px 58px}
+  .dd-section p{font-size:13.5px;line-height:1.55;color:var(--ink);margin-top:6px}
+
   .disclaimer{margin-top:28px;font-size:12.5px;color:var(--muted);background:var(--hold-soft);border:1px solid rgba(230,200,131,.25);border-radius:12px;padding:14px 16px}
   .disclaimer b{color:var(--gold)}
 

@@ -56,6 +56,29 @@ function renderQuantBlock(quant) {
     </div>`;
 }
 
+function renderDeepDiveBlock(deepDive, i) {
+  if (!deepDive) return "";
+  const sections = [
+    ["Business Teardown", deepDive.businessTeardown],
+    ["Financial Health Check", deepDive.financialHealth],
+    ["Valuation vs. History & Peers", deepDive.valuation],
+    ["The Case Against", deepDive.bearCase],
+    ["Catalysts & the Clock", deepDive.catalysts],
+    ["Position Sizing & Entry", deepDive.positionSizing],
+    [`The Quarterly Review — ${deepDive.quarterlyReview.verdict}`, deepDive.quarterlyReview.reasoning],
+  ];
+  return `
+    <div class="deepdive" id="dd${i}">
+      <div class="deepdive-head" onclick="document.getElementById('dd${i}').classList.toggle('open')">
+        <span>Full Deep Dive</span><span class="dd-chev">▾</span>
+      </div>
+      <div class="deepdive-body"><div class="inner">
+        ${sections.map(([title, body]) => `<div class="dd-section"><div class="ak">${esc(title)}</div><p>${esc(body)}</p></div>`).join("")}
+        <div class="quant-note">AI-generated analysis grounded in real fundamentals and market data where available — not financial advice. Verify before acting.</div>
+      </div></div>
+    </div>`;
+}
+
 function renderDigest(docData) {
   const results = document.getElementById("results");
   const lastRun = document.getElementById("lastRun");
@@ -131,7 +154,7 @@ function renderDigest(docData) {
           <div class="price"><div class="p">${s.price ? "$" + s.price.toFixed(2) : "—"}</div><div class="l">${s.price ? "current" : "no price"}</div></div>
           <div class="chev">▾</div>
         </div>
-        <div class="card-body"><div class="inner">${renderScreenBlock(screenResult)}${renderQuantBlock(s.quant)}${fundHtml}${analystHtml}${takesHtml}</div></div>
+        <div class="card-body"><div class="inner">${renderScreenBlock(screenResult)}${renderQuantBlock(s.quant)}${renderDeepDiveBlock(s.deepDive, i)}${fundHtml}${analystHtml}${takesHtml}</div></div>
       </div>`;
   });
   results.innerHTML = html;
