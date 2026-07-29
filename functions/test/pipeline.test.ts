@@ -445,6 +445,25 @@ describe("runPipeline — deep dive", () => {
     expect(sleepMock).not.toHaveBeenCalled();
   });
 
+  it("sleeps between a non-last ranked ticker and the next one when both have fundamentals", async () => {
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue([
+        { transcript: "AAPL is a solid buy", url: "https://ig.com/p/1", pageName: "trader1", timestamp: input.targetDate.getTime() },
+        { transcript: "NVDA looks strong", url: "https://ig.com/p/2", pageName: "trader1", timestamp: input.targetDate.getTime() },
+      ]),
+      extractTickers: vi
+        .fn()
+        .mockResolvedValueOnce([{ ticker: "AAPL", company: "Apple", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }])
+        .mockResolvedValueOnce([{ ticker: "NVDA", company: "Nvidia", view: "buy", buyLevel: "", sellLevel: "", recap: "", quote: "" }]),
+      sleep: sleepMock,
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.rankedTickers.map((r) => r.sym)).toEqual(["AAPL", "NVDA"]);
+    expect(sleepMock).toHaveBeenCalledWith(500);
+    expect(sleepMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not sleep when a ticker has no fundamentals (deep dive skipped entirely)", async () => {
     const sleepMock = vi.fn().mockResolvedValue(undefined);
     const deps = baseDeps({ getFundamentals: vi.fn().mockRejectedValue(new Error("Finnhub 429")), sleep: sleepMock });
