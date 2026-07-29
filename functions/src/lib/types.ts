@@ -77,6 +77,19 @@ export interface PeerComparison {
   fundamentals: Fundamentals;
 }
 
+export interface DeepDive {
+  businessTeardown: string;
+  financialHealth: string;
+  valuation: string;
+  bearCase: string;
+  catalysts: string;
+  positionSizing: string;
+  quarterlyReview: {
+    verdict: "Buy" | "Pass";
+    reasoning: string;
+  };
+}
+
 export interface RankedTicker {
   sym: string;
   company: string;
@@ -87,6 +100,7 @@ export interface RankedTicker {
   profile?: Profile;
   analyst?: Analyst;
   quant?: QuantScore;
+  deepDive?: DeepDive;
 }
 
 export interface ScreenCheck {

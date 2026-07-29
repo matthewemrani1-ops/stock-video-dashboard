@@ -1,4 +1,4 @@
-import type { Extraction, FredIndicator, QuantFactor, RankedTicker } from "./types.js";
+import type { Analyst, DeepDive, Extraction, FredIndicator, Fundamentals, HistoricalMetrics, PeerComparison, Profile, QuantFactor, QuantScore, RankedTicker } from "./types.js";
 
 interface ClaudeConfig {
   apiKey: string;
@@ -100,4 +100,83 @@ export async function quantExplanation(sym: string, factors: QuantFactor[], scor
   const sys = `You are writing a short factual explanation of a quantitative stock score for a personal dashboard. You will be given a ticker's composite quant score (0-100, made up of up to four equally-weighted factor categories: Value, Quality, Momentum, Low-Volatility) and the underlying metric values behind each factor. Write a 2-3 sentence explanation of what's driving the score, grounded STRICTLY in these numbers — do not add your own independent opinion, prediction, or buy/sell recommendation. Plain text, no headers, no markdown.`;
 
   return (await callClaude(sys, `${sym} — composite score ${score.toFixed(0)}/100\n${digest}`, 200, cfg)).trim();
+}
+
+export interface DeepDiveContext {
+  price: number | null;
+  fundamentals: Fundamentals | null;
+  profile: Profile | null;
+  analyst: Analyst | null;
+  quant: QuantScore | null;
+  historical: HistoricalMetrics | null;
+  peers: PeerComparison[];
+}
+
+export async function tickerDeepDive(sym: string, company: string, ctx: DeepDiveContext, cfg: ClaudeConfig): Promise<DeepDive | undefined> {
+  const lines: string[] = [`${sym} (${company || sym})${ctx.price != null ? ` — current price $${ctx.price.toFixed(2)}` : ""}`];
+
+  if (ctx.fundamentals) {
+    const f = ctx.fundamentals;
+    lines.push(
+      `Current fundamentals: P/E ${f.pe ?? "n/a"}, P/B ${f.pb ?? "n/a"}, ROE ${f.roe ?? "n/a"}%, net margin ${f.netMargin ?? "n/a"}%, debt/equity ${f.debtToEquity ?? "n/a"}, beta ${f.beta ?? "n/a"}, 52wk range $${f.week52Low ?? "n/a"}-$${f.week52High ?? "n/a"}`
+    );
+  }
+  if (ctx.analyst) {
+    lines.push(`Analyst consensus (${ctx.analyst.period}): ${ctx.analyst.buy} buy, ${ctx.analyst.hold} hold, ${ctx.analyst.sell} sell`);
+  }
+  if (ctx.quant) {
+    lines.push(`Quant score: ${ctx.quant.score.toFixed(0)}/100 (${ctx.quant.verdict}) — ${ctx.quant.factors.map((fa) => `${fa.category} ${fa.score.toFixed(0)}/100`).join(", ")}`);
+  }
+  if (ctx.historical) {
+    const trend = (label: string, points: { period: string; value: number }[]) =>
+      points.length > 0 ? `${label}: ${points.map((p) => `${p.period.slice(0, 4)}=${p.value.toFixed(2)}`).join(", ")}` : null;
+    const historyLines = [
+      trend("Net margin (5yr)", ctx.historical.netMargin),
+      trend("Gross margin (5yr)", ctx.historical.grossMargin),
+      trend("ROIC (5yr)", ctx.historical.roic),
+      trend("Net Debt/Equity (5yr)", ctx.historical.netDebtToEquity),
+      trend("P/E (5yr)", ctx.historical.pe),
+      trend("P/B (5yr)", ctx.historical.pb),
+      trend("P/FCF (5yr)", ctx.historical.pfcf),
+    ].filter((l): l is string => l !== null);
+    if (historyLines.length > 0) lines.push("5-year history (most recent first):\n" + historyLines.join("\n"));
+  }
+  if (ctx.peers.length > 0) {
+    lines.push("Peers:\n" + ctx.peers.map((p) => `${p.sym}: P/E ${p.fundamentals.pe ?? "n/a"}, P/B ${p.fundamentals.pb ?? "n/a"}, net margin ${p.fundamentals.netMargin ?? "n/a"}%`).join("\n"));
+  }
+
+  const sys = `You are writing a 7-section equity research teardown for a personal investing dashboard, grounded in the real data given below plus your own general knowledge of the company and industry. Return ONLY a JSON object with exactly these keys, no prose, no code fences:
+{
+  "businessTeardown": "2-4 sentences: how the company actually makes money, who its customers are, and what its competitive moat is (or the lack of one). Be specific, not generic.",
+  "financialHealth": "2-4 sentences on the 5-year margin and ROIC trend, whether free cash flow is running above or below reported net income (compare the P/E and P/FCF multiples given — if P/FCF is meaningfully higher than P/E, free cash flow is running below net income, and vice versa), and the debt/equity trend. State whether the business is getting stronger or weaker overall.",
+  "valuation": "2-4 sentences comparing the stock's CURRENT valuation multiples to its OWN 3-5 year historical average, and to the named peer companies given below. Name the peer tickers and their multiples directly.",
+  "bearCase": "Exactly three distinct, credible reasons this stock could drop roughly 40% from here. No hedging, no bull-case caveats — argue only this side.",
+  "catalysts": "1-3 sentences naming a SPECIFIC event or timeframe in the next 12 months that could force the market to re-rate this stock. If you genuinely can't identify one, say so plainly instead of inventing one.",
+  "positionSizing": "1-2 sentences giving a portfolio-PERCENTAGE sizing guideline (never a dollar amount) such that the bear case above would cost less than roughly 2% of a portfolio if it played out.",
+  "quarterlyReview": {"verdict": "Buy or Pass", "reasoning": "1-2 sentences: if you didn't already own this stock, would you buy it today at this price? Answer plainly."}
+}
+Ground every numeric claim in the real data provided — do not invent specific numbers not given to you. This is not financial advice; the reader understands that.`;
+
+  let out = await callClaude(sys, lines.join("\n\n"), 1400, cfg);
+  out = out.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = out.indexOf("{");
+  const end = out.lastIndexOf("}");
+  if (start >= 0 && end > start) out = out.slice(start, end + 1);
+
+  try {
+    const parsed = JSON.parse(out);
+    const valid =
+      typeof parsed.businessTeardown === "string" &&
+      typeof parsed.financialHealth === "string" &&
+      typeof parsed.valuation === "string" &&
+      typeof parsed.bearCase === "string" &&
+      typeof parsed.catalysts === "string" &&
+      typeof parsed.positionSizing === "string" &&
+      parsed.quarterlyReview &&
+      (parsed.quarterlyReview.verdict === "Buy" || parsed.quarterlyReview.verdict === "Pass") &&
+      typeof parsed.quarterlyReview.reasoning === "string";
+    return valid ? (parsed as DeepDive) : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "../src/lib/claude.js";
+import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation, tickerDeepDive } from "../src/lib/claude.js";
 
 const cfg = { apiKey: "key123", model: "claude-haiku-4-5-20251001" };
 
@@ -205,6 +205,100 @@ describe("quantExplanation", () => {
       `You are writing a short factual explanation of a quantitative stock score for a personal dashboard. You will be given a ticker's composite quant score (0-100, made up of up to four equally-weighted factor categories: Value, Quality, Momentum, Low-Volatility) and the underlying metric values behind each factor. Write a 2-3 sentence explanation of what's driving the score, grounded STRICTLY in these numbers — do not add your own independent opinion, prediction, or buy/sell recommendation. Plain text, no headers, no markdown.`
     );
     expect(body.max_tokens).toBe(200);
+    expect(body.model).toBe("claude-haiku-4-5-20251001");
+  });
+});
+
+describe("tickerDeepDive", () => {
+  const fundamentals = { pe: 30, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1, pb: 45, roe: 150, netMargin: 27, debtToEquity: 1.4, return26Week: 10, return52Week: 20 };
+  const quant = { score: 68, verdict: "Mixed" as const, factors: [{ category: "Value" as const, score: 40, detail: "P/E 30.0, P/B 45.0" }] };
+  const historical = {
+    netMargin: [{ period: "2025-09-27", value: 0.2692 }],
+    grossMargin: [{ period: "2025-09-27", value: 0.4621 }],
+    roic: [{ period: "2025-09-27", value: 0.6451 }],
+    netDebtToEquity: [{ period: "2025-09-27", value: 0.8674 }],
+    pe: [{ period: "2025-09-27", value: 33.5574 }],
+    pb: [{ period: "2025-09-27", value: 50.978 }],
+    pfcf: [{ period: "2025-09-27", value: 38.0568 }],
+  };
+  const peers = [{ sym: "MSFT", fundamentals: { ...fundamentals, pe: 35 } }];
+  const validResponse = {
+    businessTeardown: "Sells premium hardware, software, and services to consumers.",
+    financialHealth: "Margins are stable and ROIC is strong; getting stronger.",
+    valuation: "Trading above its own 5yr average and above MSFT's multiple.",
+    bearCase: "1) Growth slowing. 2) Regulatory risk. 3) Multiple compression.",
+    catalysts: "Next earnings call in 6 weeks.",
+    positionSizing: "Cap around 3% of portfolio given the bear case above.",
+    quarterlyReview: { verdict: "Buy", reasoning: "Yes, at this price." },
+  };
+
+  it("returns the parsed deep dive from the response, stripping code fences", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "```json\n" + JSON.stringify(validResponse) + "\n```" }] }) })
+    );
+    const result = await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+    expect(result).toEqual(validResponse);
+  });
+
+  it("returns undefined when the response isn't valid JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "not json" }] }) }));
+    const result = await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when quarterlyReview.verdict isn't Buy or Pass", async () => {
+    const bad = { ...validResponse, quarterlyReview: { verdict: "Maybe", reasoning: "Unsure." } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(bad) }] }) }));
+    const result = await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when a required section is missing", async () => {
+    const { businessTeardown, ...missingOne } = validResponse;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(missingOne) }] }) }));
+    const result = await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+    expect(result).toBeUndefined();
+  });
+
+  it("builds the digest with price, fundamentals, quant, historical trend, and peers", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
+    await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe(
+      `AAPL (Apple) — current price $200.00\n\nCurrent fundamentals: P/E 30, P/B 45, ROE 150%, net margin 27%, debt/equity 1.4, beta 1.1, 52wk range $150-$220\n\nQuant score: 68/100 (Mixed) — Value 40/100\n\n5-year history (most recent first):\nNet margin (5yr): 2025=0.27\nGross margin (5yr): 2025=0.46\nROIC (5yr): 2025=0.65\nNet Debt/Equity (5yr): 2025=0.87\nP/E (5yr): 2025=33.56\nP/B (5yr): 2025=50.98\nP/FCF (5yr): 2025=38.06\n\nPeers:\nMSFT: P/E 35, P/B 45, net margin 27%`
+    );
+  });
+
+  it("omits analyst, historical, and peers lines entirely when there's no data for them", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
+    await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant: null, historical: null, peers: [] }, cfg);
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe("AAPL (Apple) — current price $200.00\n\nCurrent fundamentals: P/E 30, P/B 45, ROE 150%, net margin 27%, debt/equity 1.4, beta 1.1, 52wk range $150-$220");
+  });
+
+  it("sends the correct system prompt, max_tokens, and model", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
+    await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant, historical, peers }, cfg);
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.system).toBe(`You are writing a 7-section equity research teardown for a personal investing dashboard, grounded in the real data given below plus your own general knowledge of the company and industry. Return ONLY a JSON object with exactly these keys, no prose, no code fences:
+{
+  "businessTeardown": "2-4 sentences: how the company actually makes money, who its customers are, and what its competitive moat is (or the lack of one). Be specific, not generic.",
+  "financialHealth": "2-4 sentences on the 5-year margin and ROIC trend, whether free cash flow is running above or below reported net income (compare the P/E and P/FCF multiples given — if P/FCF is meaningfully higher than P/E, free cash flow is running below net income, and vice versa), and the debt/equity trend. State whether the business is getting stronger or weaker overall.",
+  "valuation": "2-4 sentences comparing the stock's CURRENT valuation multiples to its OWN 3-5 year historical average, and to the named peer companies given below. Name the peer tickers and their multiples directly.",
+  "bearCase": "Exactly three distinct, credible reasons this stock could drop roughly 40% from here. No hedging, no bull-case caveats — argue only this side.",
+  "catalysts": "1-3 sentences naming a SPECIFIC event or timeframe in the next 12 months that could force the market to re-rate this stock. If you genuinely can't identify one, say so plainly instead of inventing one.",
+  "positionSizing": "1-2 sentences giving a portfolio-PERCENTAGE sizing guideline (never a dollar amount) such that the bear case above would cost less than roughly 2% of a portfolio if it played out.",
+  "quarterlyReview": {"verdict": "Buy or Pass", "reasoning": "1-2 sentences: if you didn't already own this stock, would you buy it today at this price? Answer plainly."}
+}
+Ground every numeric claim in the real data provided — do not invent specific numbers not given to you. This is not financial advice; the reader understands that.`);
+    expect(body.max_tokens).toBe(1400);
     expect(body.model).toBe("claude-haiku-4-5-20251001");
   });
 });
