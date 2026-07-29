@@ -1,6 +1,16 @@
 // functions/test/index.test.ts
-import { describe, it, expect } from "vitest";
-import { assertOwner, guardOverlap, resolveTargetDate } from "../src/index.js";
+import { describe, it, expect, vi } from "vitest";
+import { assertOwner, guardOverlap, resolveTargetDate, verifyOwnerAuth } from "../src/index.js";
+
+vi.mock("firebase-admin/auth", () => ({
+  getAuth: () => ({
+    verifyIdToken: vi.fn(async (token: string) => {
+      if (token === "valid-owner-token") return { uid: "ETuFSQc87GXecZg8JEgLqpYhgkL2" };
+      if (token === "valid-other-token") return { uid: "someone-else" };
+      throw new Error("invalid token");
+    }),
+  }),
+}));
 
 const OWNER_UID = "ETuFSQc87GXecZg8JEgLqpYhgkL2";
 
@@ -52,5 +62,32 @@ describe("resolveTargetDate", () => {
   it("throws invalid-argument for a malformed dateKey", () => {
     expect(() => resolveTargetDate("not-a-date")).toThrow("invalid-argument");
     expect(() => resolveTargetDate("07/26/2026")).toThrow("invalid-argument");
+  });
+});
+
+describe("verifyOwnerAuth", () => {
+  it("rejects a missing Authorization header", async () => {
+    const result = await verifyOwnerAuth(undefined);
+    expect(result).toEqual({ ok: false, status: 401, error: "missing or malformed Authorization header" });
+  });
+
+  it("rejects a malformed Authorization header", async () => {
+    const result = await verifyOwnerAuth("NotBearer abc");
+    expect(result).toEqual({ ok: false, status: 401, error: "missing or malformed Authorization header" });
+  });
+
+  it("rejects an invalid token", async () => {
+    const result = await verifyOwnerAuth("Bearer garbage-token");
+    expect(result).toEqual({ ok: false, status: 401, error: "invalid token" });
+  });
+
+  it("rejects a valid token belonging to a non-owner", async () => {
+    const result = await verifyOwnerAuth("Bearer valid-other-token");
+    expect(result).toEqual({ ok: false, status: 403, error: "not authorized" });
+  });
+
+  it("accepts a valid owner token", async () => {
+    const result = await verifyOwnerAuth("Bearer valid-owner-token");
+    expect(result).toEqual({ ok: true });
   });
 });

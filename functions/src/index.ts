@@ -10,6 +10,7 @@ import { runActor } from "./lib/apify.js";
 import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "./lib/claude.js";
 import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "./lib/finnhub.js";
 import { fredLatest, fredYoY, fredWithPrior } from "./lib/fred.js";
+import { getTopCongressTraders } from "./lib/congress.js";
 import type { DigestDoc } from "./lib/types.js";
 
 initializeApp();
@@ -55,6 +56,26 @@ export function resolveTargetDate(dateKey: string | undefined): { targetDate: Da
   // shift backward for timezones behind UTC (matches the prototype's
   // original date-picker handling).
   return { targetDate: new Date(`${dateKey}T12:00:00`), dateKey };
+}
+
+export async function verifyOwnerAuth(authHeader: string | undefined): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return { ok: false, status: 401, error: "missing or malformed Authorization header" };
+  }
+  const idToken = authHeader.slice("Bearer ".length);
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(idToken);
+  } catch {
+    return { ok: false, status: 401, error: "invalid token" };
+  }
+
+  if (decoded.uid !== OWNER_UID) {
+    return { ok: false, status: 403, error: "not authorized" };
+  }
+
+  return { ok: true };
 }
 
 const deps: PipelineDeps = {
@@ -158,23 +179,9 @@ export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, re
     return;
   }
 
-  const authHeader = request.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    response.status(401).json({ error: "missing or malformed Authorization header" });
-    return;
-  }
-  const idToken = authHeader.slice("Bearer ".length);
-
-  let decoded;
-  try {
-    decoded = await getAuth().verifyIdToken(idToken);
-  } catch {
-    response.status(401).json({ error: "invalid token" });
-    return;
-  }
-
-  if (decoded.uid !== OWNER_UID) {
-    response.status(403).json({ error: "not authorized" });
+  const auth = await verifyOwnerAuth(request.headers.authorization);
+  if (!auth.ok) {
+    response.status(auth.status).json({ error: auth.error });
     return;
   }
 
@@ -185,4 +192,23 @@ export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, re
   }
   const quote = await getQuote(sym, finnhubKey.value());
   response.json(quote ?? { price: null, changePct: null });
+});
+
+export const congressTraders = onRequest({}, async (request, response) => {
+  response.set("Access-Control-Allow-Origin", "*");
+  response.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.set("Access-Control-Allow-Headers", "Authorization");
+  if (request.method === "OPTIONS") {
+    response.status(204).send("");
+    return;
+  }
+
+  const auth = await verifyOwnerAuth(request.headers.authorization);
+  if (!auth.ok) {
+    response.status(auth.status).json({ error: auth.error });
+    return;
+  }
+
+  const traders = await getTopCongressTraders();
+  response.json(traders);
 });
