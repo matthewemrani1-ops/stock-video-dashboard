@@ -8,8 +8,8 @@ import { getAuth } from "firebase-admin/auth";
 import { runPipeline, type PipelineDeps } from "./lib/pipeline.js";
 import { runActor } from "./lib/apify.js";
 import { runCongressTradersUpdate } from "./lib/congress.js";
-import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "./lib/claude.js";
-import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "./lib/finnhub.js";
+import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation, tickerDeepDive } from "./lib/claude.js";
+import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews, getPeers, getHistoricalMetrics } from "./lib/finnhub.js";
 import { fredLatest, fredYoY, fredWithPrior } from "./lib/fred.js";
 import type { DigestDoc } from "./lib/types.js";
 
@@ -89,6 +89,10 @@ const deps: PipelineDeps = {
   getProfile,
   getAnalystConsensus,
   quantExplanation,
+  getPeers,
+  getHistoricalMetrics,
+  tickerDeepDive,
+  sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   getGeneralNews,
   fredLatest,
   fredYoY,

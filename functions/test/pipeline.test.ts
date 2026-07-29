@@ -29,6 +29,18 @@ function baseDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
     fredYoY: vi.fn().mockResolvedValue({ value: 2.9, date: "2026-07-20" }),
     fredWithPrior: vi.fn().mockResolvedValue({ value: 220000, prior: 215000, date: "2026-07-20" }),
     quantExplanation: vi.fn().mockResolvedValue("Solid low-volatility profile driven by beta near 1.0."),
+    getPeers: vi.fn().mockResolvedValue([]),
+    getHistoricalMetrics: vi.fn().mockResolvedValue(null),
+    sleep: vi.fn().mockResolvedValue(undefined),
+    tickerDeepDive: vi.fn().mockResolvedValue({
+      businessTeardown: "Sells premium hardware, software, and services.",
+      financialHealth: "Margins have been stable and improving.",
+      valuation: "Trading in line with historical multiples.",
+      bearCase: "1) Growth slowing. 2) Regulatory risk. 3) Multiple compression.",
+      catalysts: "Next earnings call in 6 weeks.",
+      positionSizing: "Cap around 3% of portfolio.",
+      quarterlyReview: { verdict: "Buy", reasoning: "Yes, at this price." },
+    }),
     ...overrides,
   };
 }
@@ -336,5 +348,107 @@ describe("runPipeline — FRED indicator status", () => {
       status: "warning",
       statusLabel: "⚠ contracting",
     });
+  });
+});
+
+describe("runPipeline — deep dive", () => {
+  it("attaches a deep dive report to a ranked ticker that has fundamentals", async () => {
+    const doc = await runPipeline(input, baseDeps());
+    expect(doc.rankedTickers[0].deepDive).toBeDefined();
+    expect(doc.rankedTickers[0].deepDive?.quarterlyReview.verdict).toBe("Buy");
+  });
+
+  it("does not attempt a deep dive when fundamentals are unavailable", async () => {
+    const getPeersMock = vi.fn().mockResolvedValue([]);
+    const tickerDeepDiveMock = vi.fn().mockResolvedValue({
+      businessTeardown: "x",
+      financialHealth: "x",
+      valuation: "x",
+      bearCase: "x",
+      catalysts: "x",
+      positionSizing: "x",
+      quarterlyReview: { verdict: "Buy", reasoning: "x" },
+    });
+    const deps = baseDeps({
+      getFundamentals: vi.fn().mockRejectedValue(new Error("Finnhub 429")),
+      getPeers: getPeersMock,
+      tickerDeepDive: tickerDeepDiveMock,
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.rankedTickers[0].deepDive).toBeUndefined();
+    expect(getPeersMock).not.toHaveBeenCalled();
+    expect(tickerDeepDiveMock).not.toHaveBeenCalled();
+  });
+
+  it("passes peer fundamentals to tickerDeepDive, dropping peers whose fundamentals call fails", async () => {
+    const tickerDeepDiveMock = vi.fn().mockResolvedValue({
+      businessTeardown: "x",
+      financialHealth: "x",
+      valuation: "x",
+      bearCase: "x",
+      catalysts: "x",
+      positionSizing: "x",
+      quarterlyReview: { verdict: "Buy", reasoning: "x" },
+    });
+    const deps = baseDeps({
+      getPeers: vi.fn().mockResolvedValue(["MSFT", "GOOGL"]),
+      getFundamentals: vi.fn().mockImplementation((sym: string) => {
+        if (sym === "AAPL") return Promise.resolve({ pe: 20, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1, pb: 3, roe: 20, netMargin: 15, debtToEquity: 0.8, return26Week: 10, return52Week: 20 });
+        if (sym === "MSFT") return Promise.resolve({ pe: 35, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1, pb: 3, roe: 20, netMargin: 15, debtToEquity: 0.8, return26Week: 10, return52Week: 20 });
+        return Promise.reject(new Error("Finnhub 429"));
+      }),
+      tickerDeepDive: tickerDeepDiveMock,
+    });
+    await runPipeline(input, deps);
+
+    const [, , ctx] = tickerDeepDiveMock.mock.calls[0];
+    expect(ctx.peers).toEqual([{ sym: "MSFT", fundamentals: { pe: 35, marketCap: 3000, week52High: 220, week52Low: 150, beta: 1.1, pb: 3, roe: 20, netMargin: 15, debtToEquity: 0.8, return26Week: 10, return52Week: 20 } }]);
+  });
+
+  it("passes an empty peers array to tickerDeepDive when getPeers fails", async () => {
+    const tickerDeepDiveMock = vi.fn().mockResolvedValue({
+      businessTeardown: "x",
+      financialHealth: "x",
+      valuation: "x",
+      bearCase: "x",
+      catalysts: "x",
+      positionSizing: "x",
+      quarterlyReview: { verdict: "Buy", reasoning: "x" },
+    });
+    const deps = baseDeps({ getPeers: vi.fn().mockRejectedValue(new Error("Finnhub 500")), tickerDeepDive: tickerDeepDiveMock });
+    await runPipeline(input, deps);
+
+    const [, , ctx] = tickerDeepDiveMock.mock.calls[0];
+    expect(ctx.peers).toEqual([]);
+  });
+
+  it("leaves deepDive unset when tickerDeepDive fails, without failing the run or touching quant/screen", async () => {
+    const deps = baseDeps({ tickerDeepDive: vi.fn().mockRejectedValue(new Error("AI 500")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers[0].deepDive).toBeUndefined();
+    expect(doc.rankedTickers[0].quant).toBeDefined();
+    expect(doc.screen.AAPL).toBeDefined();
+  });
+
+  it("leaves deepDive unset when tickerDeepDive returns undefined (unparseable response)", async () => {
+    const deps = baseDeps({ tickerDeepDive: vi.fn().mockResolvedValue(undefined) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.rankedTickers[0].deepDive).toBeUndefined();
+  });
+
+  it("paces the peer-fetch fan-out with a sleep between tickers that have fundamentals", async () => {
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
+    const deps = baseDeps({ sleep: sleepMock });
+    await runPipeline(input, deps);
+    expect(sleepMock).toHaveBeenCalledWith(500);
+  });
+
+  it("does not sleep when a ticker has no fundamentals (deep dive skipped entirely)", async () => {
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
+    const deps = baseDeps({ getFundamentals: vi.fn().mockRejectedValue(new Error("Finnhub 429")), sleep: sleepMock });
+    await runPipeline(input, deps);
+    expect(sleepMock).not.toHaveBeenCalled();
   });
 });

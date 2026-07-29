@@ -1,4 +1,4 @@
-import type { DigestDoc, Extraction, QuantFactor, RankedTicker } from "./types.js";
+import type { DigestDoc, Extraction, HistoricalMetrics, PeerComparison, QuantFactor, RankedTicker } from "./types.js";
 import { rankMentions } from "./ranking.js";
 import { screenStock } from "./screen.js";
 import { scoreQuant } from "./quant.js";
@@ -26,6 +26,23 @@ export interface PipelineDeps {
   getProfile: (sym: string, key: string) => Promise<RankedTicker["profile"] | null>;
   getAnalystConsensus: (sym: string, key: string) => Promise<RankedTicker["analyst"] | null>;
   quantExplanation: (sym: string, factors: QuantFactor[], score: number, cfg: { apiKey: string; model: string }) => Promise<string>;
+  getPeers: (sym: string, key: string) => Promise<string[]>;
+  getHistoricalMetrics: (sym: string, key: string) => Promise<HistoricalMetrics | null>;
+  tickerDeepDive: (
+    sym: string,
+    company: string,
+    ctx: {
+      price: number | null;
+      fundamentals: NonNullable<RankedTicker["fundamentals"]> | null;
+      profile: NonNullable<RankedTicker["profile"]> | null;
+      analyst: NonNullable<RankedTicker["analyst"]> | null;
+      quant: NonNullable<RankedTicker["quant"]> | null;
+      historical: HistoricalMetrics | null;
+      peers: PeerComparison[];
+    },
+    cfg: { apiKey: string; model: string }
+  ) => Promise<RankedTicker["deepDive"]>;
+  sleep: (ms: number) => Promise<void>;
   getGeneralNews: (key: string) => Promise<{ headline: string; summary?: string }[]>;
   fredLatest: (seriesId: string, apiKey: string) => Promise<{ value: number; date: string }>;
   fredYoY: (seriesId: string, apiKey: string) => Promise<{ value: number; date: string }>;
@@ -281,6 +298,52 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
       } catch {
         // leave explanation unset -> UI shows score/breakdown without narrative text
       }
+    }
+
+    if (ticker.fundamentals) {
+      let peerSyms: string[] = [];
+      try {
+        peerSyms = await deps.getPeers(ticker.sym, secrets.priceKey);
+      } catch {
+        // leave peerSyms empty -> deep dive still generates without peer comparison
+      }
+
+      const peerResults = await Promise.all(
+        peerSyms.map(async (peerSym) => {
+          try {
+            const pf = await deps.getFundamentals(peerSym, secrets.priceKey);
+            return pf ? { sym: peerSym, fundamentals: pf } : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      const peers = peerResults.filter((p): p is PeerComparison => p !== null);
+
+      let historical: HistoricalMetrics | null = null;
+      try {
+        historical = await deps.getHistoricalMetrics(ticker.sym, secrets.priceKey);
+      } catch {
+        historical = null;
+      }
+
+      try {
+        ticker.deepDive = await deps.tickerDeepDive(
+          ticker.sym,
+          ticker.company,
+          { price: ticker.price ?? null, fundamentals: ticker.fundamentals ?? null, profile: ticker.profile ?? null, analyst: ticker.analyst ?? null, quant: ticker.quant ?? null, historical, peers },
+          claudeCfg
+        );
+      } catch {
+        // leave deepDive unset -> ticker card just doesn't show the extra section
+      }
+
+      // Pace peer-fetch fan-outs between tickers (up to 6 concurrent Finnhub
+      // calls just happened above) to avoid bursting past Finnhub's rate
+      // limit — same lesson as the Congress-trading feature's chunked/paced
+      // Finnhub calls (functions/src/lib/congress.ts:182-198). Injected via
+      // deps.sleep (not a bare setTimeout) so tests can make this instant.
+      await deps.sleep(500);
     }
   }
 
