@@ -291,10 +291,12 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
   }
 
   let videoWrap: string | undefined;
-  try {
-    videoWrap = await deps.videoWrap(ranked, input.dateLabel, claudeCfg);
-  } catch {
-    videoWrap = undefined;
+  if (ranked.length > 0) {
+    try {
+      videoWrap = await deps.videoWrap(ranked, input.dateLabel, claudeCfg);
+    } catch {
+      videoWrap = undefined;
+    }
   }
 
   let marketRecap: string | undefined;

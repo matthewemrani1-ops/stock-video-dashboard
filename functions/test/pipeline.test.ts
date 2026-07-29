@@ -181,6 +181,18 @@ describe("runPipeline", () => {
     expect(doc.status).toBe("complete");
     expect(doc.rankedTickers).toEqual([]);
   });
+
+  it("does not call videoWrap when there are no ranked tickers", async () => {
+    const videoWrapMock = vi.fn().mockResolvedValue("wrap text");
+    const deps = baseDeps({
+      runActor: vi.fn().mockResolvedValue([]),
+      videoWrap: videoWrapMock,
+    });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(videoWrapMock).not.toHaveBeenCalled();
+    expect(doc.videoWrap).toBeUndefined();
+  });
 });
 
 describe("runPipeline — quant score", () => {
