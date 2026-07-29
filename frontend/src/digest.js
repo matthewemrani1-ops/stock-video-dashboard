@@ -137,20 +137,20 @@ function renderDigest(docData) {
   results.innerHTML = html;
   if (ranked[0]) document.getElementById("c0").classList.add("open");
 
-  if (docData.videoWrap) {
-    document.getElementById("dailySummary").innerHTML = `<div class="ds-head">Video Wrap — ${esc(docData.dateLabel)}</div><div class="ds-body"><p>${esc(docData.videoWrap).replace(/\n\n/g, "</p><p>")}</p></div>`;
-  }
-  if (docData.marketRecap) {
-    document.getElementById("newsSummary").innerHTML = `<div class="ds-head">Market Recap (news) — ${esc(docData.dateLabel)}</div><div class="ds-body"><p>${esc(docData.marketRecap).replace(/\n\n/g, "</p><p>")}</p></div>`;
-  }
-  if (docData.fred) {
-    document.getElementById("fredStrip").innerHTML = docData.fred
-      .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${formatFredValue(cd)}</div><div class="if ${cd.status}">${esc(cd.statusLabel)}</div></div>`)
-      .join("");
-  }
-  if (docData.marketHealth) {
-    document.getElementById("macroSummary").innerHTML = `<div class="ds-head">Market Health — what to watch for</div><div class="ds-body"><p>${esc(docData.marketHealth).replace(/\n\n/g, "</p><p>")}</p></div>`;
-  }
+  document.getElementById("dailySummary").innerHTML = docData.videoWrap
+    ? `<div class="ds-head">Video Wrap — ${esc(docData.dateLabel)}</div><div class="ds-body"><p>${esc(docData.videoWrap).replace(/\n\n/g, "</p><p>")}</p></div>`
+    : "";
+  document.getElementById("newsSummary").innerHTML = docData.marketRecap
+    ? `<div class="ds-head">Market Recap (news) — ${esc(docData.dateLabel)}</div><div class="ds-body"><p>${esc(docData.marketRecap).replace(/\n\n/g, "</p><p>")}</p></div>`
+    : "";
+  document.getElementById("fredStrip").innerHTML = docData.fred
+    ? docData.fred
+        .map((cd) => `<div class="idx-card"><div class="in">${esc(cd.label)}</div><div class="ip">${formatFredValue(cd)}</div><div class="if ${cd.status}">${esc(cd.statusLabel)}</div></div>`)
+        .join("")
+    : "";
+  document.getElementById("macroSummary").innerHTML = docData.marketHealth
+    ? `<div class="ds-head">Market Health — what to watch for</div><div class="ds-body"><p>${esc(docData.marketHealth).replace(/\n\n/g, "</p><p>")}</p></div>`
+    : "";
 
   const now = new Date();
   lastRun.textContent = now.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
