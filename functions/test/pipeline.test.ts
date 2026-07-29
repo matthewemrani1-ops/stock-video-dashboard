@@ -67,12 +67,23 @@ describe("runPipeline", () => {
     expect(doc.skippedReelCount).toBe(0);
   });
 
-  it("sets status error and does not throw when Apify fails", async () => {
+  it("records a reelError and keeps rankedTickers empty when Apify fails, without failing the whole run", async () => {
     const deps = baseDeps({ runActor: vi.fn().mockRejectedValue(new Error("Apify 401 — bad token")) });
     const doc = await runPipeline(input, deps);
-    expect(doc.status).toBe("error");
-    expect(doc.errorMessage).toContain("bad token");
+    expect(doc.status).toBe("complete");
+    expect(doc.reelError).toContain("bad token");
     expect(doc.rankedTickers).toEqual([]);
+  });
+
+  it("still computes FRED and market health when Apify fails", async () => {
+    const deps = baseDeps({ runActor: vi.fn().mockRejectedValue(new Error("403 — Monthly usage hard limit exceeded")) });
+    const doc = await runPipeline(input, deps);
+    expect(doc.status).toBe("complete");
+    expect(doc.reelError).toContain("Monthly usage hard limit exceeded");
+    expect(doc.fred).toBeDefined();
+    expect(doc.fred?.length).toBeGreaterThan(0);
+    expect(doc.marketHealth).toBe("health text");
+    expect(doc.marketRecap).toBe("recap text");
   });
 
   it("skips a reel whose extraction fails and keeps going", async () => {

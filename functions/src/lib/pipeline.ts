@@ -213,23 +213,19 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
   const { secrets } = input;
   const claudeCfg = { apiKey: secrets.aiKey, model: secrets.model };
 
-  let reels: ReelLike[];
+  let reels: ReelLike[] = [];
+  let reelError: string | undefined;
   try {
     const urlList = input.trackedHandles.map((u) => u.trim().replace(/^@/, "")).filter(Boolean);
     const rawReels = await deps.runActor(secrets.actorId, secrets.apifyToken, { username: urlList, resultsLimit: 5, includeTranscript: true });
     reels = Array.isArray(rawReels) ? (rawReels as ReelLike[]) : [];
     reels = reels.filter((v) => isOnDate(getTimestamp(v), input.targetDate));
   } catch (e) {
-    return {
-      status: "error",
-      errorMessage: e instanceof Error ? e.message : String(e),
-      dateLabel: input.dateLabel,
-      rankedTickers: [],
-      screen: {},
-      skippedReelCount: 0,
-      startedAt,
-      completedAt: Date.now(),
-    };
+    // A scrape failure (rate limit, quota, transient network error) only
+    // means there's no reel content today — it must not prevent the
+    // independent sections below (FRED, market health, market recap) from
+    // still computing and being saved.
+    reelError = e instanceof Error ? e.message : String(e);
   }
 
   const extractions: (Extraction & { who: string })[] = [];
@@ -321,6 +317,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
 
   return {
     status: "complete",
+    reelError,
     dateLabel: input.dateLabel,
     rankedTickers: ranked,
     screen,

@@ -94,6 +94,7 @@ export interface FredIndicator {
 export interface DigestDoc {
   status: "running" | "complete" | "error";
   errorMessage?: string;
+  reelError?: string;
   dateLabel: string;
   rankedTickers: RankedTicker[];
   screen: Record<string, ScreenResult>;

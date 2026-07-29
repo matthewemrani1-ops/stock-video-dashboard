@@ -73,6 +73,10 @@ function renderDigest(docData) {
   const total = ranked.reduce((a, b) => a + b.count, 0);
   let html = `<div class="section-label"><h2>Most discussed — ${esc(docData.dateLabel)}</h2><span>${ranked.length} stocks · ${total} mentions</span></div>`;
 
+  if (docData.reelError) {
+    html += `<div class="note"><b>No reel data today.</b><br>${esc(docData.reelError)}</div>`;
+  }
+
   ranked.forEach((s, i) => {
     const counts = {};
     s.takes.forEach((t) => (counts[t.view] = (counts[t.view] || 0) + 1));
