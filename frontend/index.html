@@ -348,7 +348,7 @@
 
   <script type="module">
     import { requireOwner, signIn } from "./src/auth.js";
-    import { watchDate, runNow, startLiveStrips } from "./src/digest.js";
+    import { watchDate, runNow, startLiveStrips, watchCongressTraders } from "./src/digest.js";
     import { openSettings, closeSettings, saveSettings } from "./src/settings.js";
 
     document.getElementById("signInBtn").addEventListener("click", signIn);
@@ -378,6 +378,7 @@
       document.getElementById("reviewDate").value = todayKey;
       selectDate(todayKey);
       startLiveStrips();
+      watchCongressTraders();
     });
   </script>
 </body>

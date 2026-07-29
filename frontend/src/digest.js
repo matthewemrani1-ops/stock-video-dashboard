@@ -186,17 +186,11 @@ async function loadStrip(list, elId) {
   el.innerHTML = cards.join("");
 }
 
-async function loadCongressTraders() {
-  const el = document.getElementById("congressStrip");
-  if (!el) return;
-  const idToken = await auth.currentUser?.getIdToken();
-  if (!idToken) return; // not signed in yet (login gate hasn't resolved) — skip this cycle
-  try {
-    const r = await fetch(`${FUNCTIONS_BASE_URL}/congressTraders`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
-    const traders = await r.json();
-    if (!Array.isArray(traders)) return;
+export function watchCongressTraders() {
+  return onSnapshot(doc(db, "congress", "latest"), (snap) => {
+    const el = document.getElementById("congressStrip");
+    if (!el || !snap.exists()) return;
+    const traders = snap.data().traders || [];
     el.innerHTML = traders
       .map(
         (t) => `<div class="idx-card">
@@ -207,9 +201,7 @@ async function loadCongressTraders() {
         </div>`
       )
       .join("");
-  } catch {
-    // leave section empty
-  }
+  });
 }
 
 export function startLiveStrips() {
@@ -219,9 +211,6 @@ export function startLiveStrips() {
   };
   load();
   setInterval(load, 60000);
-
-  loadCongressTraders();
-  setInterval(loadCongressTraders, 20 * 60 * 1000);
 }
 
 export async function runNow() {
