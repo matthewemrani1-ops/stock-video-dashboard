@@ -116,6 +116,9 @@
   .idx-card .if{font-family:"JetBrains Mono";font-size:11px;font-weight:600;margin-top:5px;letter-spacing:.01em}
   .idx-card .if.normal{color:var(--pos)}
   .idx-card .if.warning{color:var(--neg)}
+  .idx-card .ip.pos{color:var(--pos)}
+  .idx-card .ip.neg{color:var(--neg)}
+  .idx-card .cc{font-size:11px;color:var(--faint);margin-top:4px;line-height:1.4}
   @media (max-width:720px){.indices-strip{grid-template-columns:repeat(2,1fr)}}
 
   .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0 22px}
@@ -278,6 +281,11 @@
       <div class="strip-section">
         <div class="strip-label">Economic Indicators <span>· FRED</span></div>
         <div class="indices-strip macro" id="fredStrip"></div>
+      </div>
+
+      <div class="strip-section">
+        <div class="strip-label">Congressional Trading <span>· top performers (30-day)</span></div>
+        <div class="indices-strip macro" id="congressStrip"></div>
       </div>
 
       <div id="macroSummary" class="daily-summary macro-summary"></div>

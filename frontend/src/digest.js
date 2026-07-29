@@ -186,6 +186,32 @@ async function loadStrip(list, elId) {
   el.innerHTML = cards.join("");
 }
 
+async function loadCongressTraders() {
+  const el = document.getElementById("congressStrip");
+  if (!el) return;
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) return; // not signed in yet (login gate hasn't resolved) — skip this cycle
+  try {
+    const r = await fetch(`${FUNCTIONS_BASE_URL}/congressTraders`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const traders = await r.json();
+    if (!Array.isArray(traders)) return;
+    el.innerHTML = traders
+      .map(
+        (t) => `<div class="idx-card">
+          <div class="in">${esc(t.name)}</div>
+          <div class="ip ${t.returnPct >= 0 ? "pos" : "neg"}">${t.returnPct >= 0 ? "+" : ""}${t.returnPct.toFixed(1)}%</div>
+          <div class="cc">${esc(t.party)} · ${esc(t.chamber)} · ${t.tradeCount} trade${t.tradeCount === 1 ? "" : "s"}</div>
+          ${t.topHolding ? `<div class="cc">Top holding: ${esc(t.topHolding)}</div>` : ""}
+        </div>`
+      )
+      .join("");
+  } catch {
+    // leave section empty
+  }
+}
+
 export function startLiveStrips() {
   const load = () => {
     loadStrip(INDEX_PROXIES, "indicesStrip");
@@ -193,6 +219,9 @@ export function startLiveStrips() {
   };
   load();
   setInterval(load, 60000);
+
+  loadCongressTraders();
+  setInterval(loadCongressTraders, 20 * 60 * 1000);
 }
 
 export async function runNow() {
