@@ -438,11 +438,11 @@ describe("runPipeline — deep dive", () => {
     expect(doc.rankedTickers[0].deepDive).toBeUndefined();
   });
 
-  it("paces the peer-fetch fan-out with a sleep between tickers that have fundamentals", async () => {
+  it("does not sleep after the last ranked ticker with fundamentals (nothing left to pace against)", async () => {
     const sleepMock = vi.fn().mockResolvedValue(undefined);
     const deps = baseDeps({ sleep: sleepMock });
     await runPipeline(input, deps);
-    expect(sleepMock).toHaveBeenCalledWith(500);
+    expect(sleepMock).not.toHaveBeenCalled();
   });
 
   it("does not sleep when a ticker has no fundamentals (deep dive skipped entirely)", async () => {

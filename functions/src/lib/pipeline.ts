@@ -264,7 +264,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
 
   const ranked = rankMentions(extractions).slice(0, input.topN);
 
-  for (const ticker of ranked) {
+  for (const [index, ticker] of ranked.entries()) {
     try {
       const q = await deps.getQuote(ticker.sym, secrets.priceKey);
       if (q) ticker.price = q.price;
@@ -331,7 +331,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
         ticker.deepDive = await deps.tickerDeepDive(
           ticker.sym,
           ticker.company,
-          { price: ticker.price ?? null, fundamentals: ticker.fundamentals ?? null, profile: ticker.profile ?? null, analyst: ticker.analyst ?? null, quant: ticker.quant ?? null, historical, peers },
+          { price: ticker.price ?? null, fundamentals: ticker.fundamentals, profile: ticker.profile ?? null, analyst: ticker.analyst ?? null, quant: ticker.quant ?? null, historical, peers },
           claudeCfg
         );
       } catch {
@@ -343,7 +343,9 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
       // limit — same lesson as the Congress-trading feature's chunked/paced
       // Finnhub calls (functions/src/lib/congress.ts:182-198). Injected via
       // deps.sleep (not a bare setTimeout) so tests can make this instant.
-      await deps.sleep(500);
+      if (index < ranked.length - 1) {
+        await deps.sleep(500);
+      }
     }
   }
 

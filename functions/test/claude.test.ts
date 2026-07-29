@@ -272,13 +272,43 @@ describe("tickerDeepDive", () => {
     );
   });
 
-  it("omits analyst, historical, and peers lines entirely when there's no data for them", async () => {
+  it("omits analyst, historical, peers, and industry lines entirely when there's no data for them", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
     await tickerDeepDive("AAPL", "Apple", { price: 200, fundamentals, profile: null, analyst: null, quant: null, historical: null, peers: [] }, cfg);
 
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(init.body);
     expect(body.messages[0].content).toBe("AAPL (Apple) — current price $200.00\n\nCurrent fundamentals: P/E 30, P/B 45, ROE 150%, net margin 27%, debt/equity 1.4, beta 1.1, 52wk range $150-$220");
+  });
+
+  it("omits the industry line when profile.industry is missing/empty", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
+    await tickerDeepDive(
+      "AAPL",
+      "Apple",
+      { price: 200, fundamentals, profile: { industry: "", name: "Apple Inc", weburl: "https://apple.com" }, analyst: null, quant: null, historical: null, peers: [] },
+      cfg
+    );
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe("AAPL (Apple) — current price $200.00\n\nCurrent fundamentals: P/E 30, P/B 45, ROE 150%, net margin 27%, debt/equity 1.4, beta 1.1, 52wk range $150-$220");
+  });
+
+  it("includes an Industry line right after fundamentals when profile.industry is present", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(validResponse) }] }) }));
+    await tickerDeepDive(
+      "AAPL",
+      "Apple",
+      { price: 200, fundamentals, profile: { industry: "Consumer Electronics", name: "Apple Inc", weburl: "https://apple.com" }, analyst: null, quant, historical, peers },
+      cfg
+    );
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.messages[0].content).toBe(
+      `AAPL (Apple) — current price $200.00\n\nCurrent fundamentals: P/E 30, P/B 45, ROE 150%, net margin 27%, debt/equity 1.4, beta 1.1, 52wk range $150-$220\n\nIndustry: Consumer Electronics\n\nQuant score: 68/100 (Mixed) — Value 40/100\n\n5-year history (most recent first):\nNet margin (5yr): 2025=0.27\nGross margin (5yr): 2025=0.46\nROIC (5yr): 2025=0.65\nNet Debt/Equity (5yr): 2025=0.87\nP/E (5yr): 2025=33.56\nP/B (5yr): 2025=50.98\nP/FCF (5yr): 2025=38.06\n\nPeers:\nMSFT: P/E 35, P/B 45, net margin 27%`
+    );
   });
 
   it("sends the correct system prompt, max_tokens, and model", async () => {

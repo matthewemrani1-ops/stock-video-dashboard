@@ -121,6 +121,9 @@ export async function tickerDeepDive(sym: string, company: string, ctx: DeepDive
       `Current fundamentals: P/E ${f.pe ?? "n/a"}, P/B ${f.pb ?? "n/a"}, ROE ${f.roe ?? "n/a"}%, net margin ${f.netMargin ?? "n/a"}%, debt/equity ${f.debtToEquity ?? "n/a"}, beta ${f.beta ?? "n/a"}, 52wk range $${f.week52Low ?? "n/a"}-$${f.week52High ?? "n/a"}`
     );
   }
+  if (ctx.profile?.industry) {
+    lines.push(`Industry: ${ctx.profile.industry}`);
+  }
   if (ctx.analyst) {
     lines.push(`Analyst consensus (${ctx.analyst.period}): ${ctx.analyst.buy} buy, ${ctx.analyst.hold} hold, ${ctx.analyst.sell} sell`);
   }

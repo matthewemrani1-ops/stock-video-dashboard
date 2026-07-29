@@ -57,7 +57,7 @@ function renderQuantBlock(quant) {
 }
 
 function renderDeepDiveBlock(deepDive, i) {
-  if (!deepDive) return "";
+  if (!deepDive || !deepDive.quarterlyReview) return "";
   const sections = [
     ["Business Teardown", deepDive.businessTeardown],
     ["Financial Health Check", deepDive.financialHealth],
@@ -73,7 +73,7 @@ function renderDeepDiveBlock(deepDive, i) {
         <span>Full Deep Dive</span><span class="dd-chev">▾</span>
       </div>
       <div class="deepdive-body"><div class="inner">
-        ${sections.map(([title, body]) => `<div class="dd-section"><div class="ak">${esc(title)}</div><p>${esc(body)}</p></div>`).join("")}
+        ${sections.map(([title, body]) => `<div class="dd-section"><div class="ak">${esc(title)}</div><p>${esc(body).replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>")}</p></div>`).join("")}
         <div class="quant-note">AI-generated analysis grounded in real fundamentals and market data where available — not financial advice. Verify before acting.</div>
       </div></div>
     </div>`;
