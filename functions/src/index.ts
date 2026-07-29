@@ -10,7 +10,6 @@ import { runActor } from "./lib/apify.js";
 import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "./lib/claude.js";
 import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "./lib/finnhub.js";
 import { fredLatest, fredYoY, fredWithPrior } from "./lib/fred.js";
-import { getTopCongressTraders } from "./lib/congress.js";
 import type { DigestDoc } from "./lib/types.js";
 
 initializeApp();
@@ -194,21 +193,3 @@ export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, re
   response.json(quote ?? { price: null, changePct: null });
 });
 
-export const congressTraders = onRequest({}, async (request, response) => {
-  response.set("Access-Control-Allow-Origin", "*");
-  response.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-  response.set("Access-Control-Allow-Headers", "Authorization");
-  if (request.method === "OPTIONS") {
-    response.status(204).send("");
-    return;
-  }
-
-  const auth = await verifyOwnerAuth(request.headers.authorization);
-  if (!auth.ok) {
-    response.status(auth.status).json({ error: auth.error });
-    return;
-  }
-
-  const traders = await getTopCongressTraders();
-  response.json(traders);
-});

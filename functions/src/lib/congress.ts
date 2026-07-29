@@ -1,17 +1,28 @@
-const QUIVER_URL = "https://api.quiverquant.com/beta/live/congresstrading";
 const LOOKBACK_DAYS = 30;
 const TOP_N = 10;
 
-interface RawTrade {
-  Representative?: string;
-  Ticker?: string;
-  Transaction?: string;
-  Amount?: string | number;
-  TransactionDate?: string;
-  Party?: string;
-  House?: string;
-  TickerType?: string;
-  PriceChange?: string | number;
+export interface RawCapitolTrade {
+  politician_name?: string;
+  politician_family?: string;
+  traded_issuer_ticker?: string;
+  published?: string;
+  traded?: string;
+  filed_after?: string;
+  owner?: string;
+  type?: string;
+  size?: string;
+  price?: string;
+}
+
+export interface ParsedTrade {
+  name: string;
+  party: string;
+  chamber: string;
+  ticker: string;
+  type: "buy" | "sell";
+  sizeAmount: number;
+  tradePrice: number | null;
+  tradedDate: Date;
 }
 
 export interface CongressTrader {
@@ -23,41 +34,52 @@ export interface CongressTrader {
   topHolding: string | null;
 }
 
-function toNumber(v: string | number | undefined): number {
-  const n = Number(v);
-  return isNaN(n) ? 0 : n;
+function parseSizeBucket(size: string | undefined): number {
+  if (!size) return 0;
+  const cleaned = size.replace(/,/g, "").trim();
+  const parseValue = (s: string): number => {
+    const m = s.match(/^([\d.]+)\s*([KM]?)/i);
+    if (!m) return 0;
+    const num = parseFloat(m[1]);
+    const mult = m[2].toUpperCase() === "M" ? 1_000_000 : m[2].toUpperCase() === "K" ? 1_000 : 1;
+    return num * mult;
+  };
+  if (cleaned.endsWith("+")) {
+    return parseValue(cleaned.slice(0, -1));
+  }
+  const parts = cleaned.split(/[–-]/);
+  if (parts.length !== 2) return parseValue(cleaned);
+  return (parseValue(parts[0]) + parseValue(parts[1])) / 2;
 }
 
-function cutoffDate(now: Date): Date {
-  const d = new Date(now);
-  d.setDate(d.getDate() - LOOKBACK_DAYS);
-  return d;
+export function parseCapitolTrade(raw: RawCapitolTrade): ParsedTrade | null {
+  if (!raw.politician_name || !raw.traded_issuer_ticker || !raw.traded) return null;
+  const tradedDate = new Date(raw.traded);
+  if (isNaN(tradedDate.getTime())) return null;
+
+  const ticker = raw.traded_issuer_ticker.split(":")[0];
+  const familyParts = (raw.politician_family || "").split(/\s+/);
+  const party = familyParts[0] || "?";
+  const chamber = familyParts[1] || "?";
+  const type: "buy" | "sell" = (raw.type || "").toLowerCase() === "sell" ? "sell" : "buy";
+  const sizeAmount = parseSizeBucket(raw.size);
+  const priceNum = raw.price ? parseFloat(raw.price) : NaN;
+  const tradePrice = !isNaN(priceNum) && priceNum > 0 ? priceNum : null;
+
+  return { name: raw.politician_name, party, chamber, ticker, type, sizeAmount, tradePrice, tradedDate };
 }
 
-function isWithinWindow(dateStr: string | undefined, cutoff: Date, now: Date): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  return !isNaN(d.getTime()) && d >= cutoff && d <= now;
+function isWithinWindow(d: Date, cutoff: Date, now: Date): boolean {
+  return d >= cutoff && d <= now;
 }
 
-function computeTopHolding(allTrades: RawTrade[], representative: string, cutoff: Date, now: Date): string | null {
-  const memberTrades = allTrades.filter(
-    (t) => t.Representative === representative && isWithinWindow(t.TransactionDate, cutoff, now) && t.TickerType === "ST" && !!t.Ticker
-  );
-
+function computeTopHolding(allTrades: ParsedTrade[], name: string, cutoff: Date, now: Date): string | null {
+  const memberTrades = allTrades.filter((t) => t.name === name && isWithinWindow(t.tradedDate, cutoff, now));
   const holdings = new Map<string, number>();
   for (const t of memberTrades) {
-    const ticker = t.Ticker as string;
-    const tx = (t.Transaction || "").toLowerCase();
-    const amt = t.Amount === undefined || t.Amount === null || t.Amount === "" ? 1000 : toNumber(t.Amount);
-    const current = holdings.get(ticker) || 0;
-    if (tx.includes("purchase")) {
-      holdings.set(ticker, current + amt);
-    } else if (tx.includes("sale")) {
-      holdings.set(ticker, current - amt);
-    }
+    const current = holdings.get(t.ticker) || 0;
+    holdings.set(t.ticker, t.type === "buy" ? current + t.sizeAmount : current - t.sizeAmount);
   }
-
   let topTicker: string | null = null;
   let topAmount = 0;
   for (const [ticker, amt] of holdings.entries()) {
@@ -69,54 +91,49 @@ function computeTopHolding(allTrades: RawTrade[], representative: string, cutoff
   return topTicker;
 }
 
-export function computeCongressRanking(trades: RawTrade[], now: Date = new Date(), topN: number = TOP_N): CongressTrader[] {
-  const cutoff = cutoffDate(now);
+export function computeCongressRanking(
+  trades: ParsedTrade[],
+  priceByTicker: Map<string, number>,
+  now: Date = new Date(),
+  topN: number = TOP_N
+): CongressTrader[] {
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
 
-  const purchases = trades.filter(
-    (t) =>
-      isWithinWindow(t.TransactionDate, cutoff, now) &&
-      typeof t.Transaction === "string" &&
-      t.Transaction.toLowerCase().includes("purchase") &&
-      !!t.Ticker &&
-      t.TickerType === "ST" &&
-      !!t.Representative
-  );
+  const buys = trades.filter((t) => t.type === "buy" && isWithinWindow(t.tradedDate, cutoff, now));
 
-  const byMember = new Map<string, RawTrade[]>();
-  for (const t of purchases) {
-    const key = t.Representative as string;
-    if (!byMember.has(key)) byMember.set(key, []);
-    byMember.get(key)!.push(t);
+  const byMember = new Map<string, ParsedTrade[]>();
+  for (const t of buys) {
+    if (!byMember.has(t.name)) byMember.set(t.name, []);
+    byMember.get(t.name)!.push(t);
   }
 
-  const ranked: CongressTrader[] = Array.from(byMember.entries()).map(([name, memberTrades]) => {
-    const totalAmt = memberTrades.reduce((sum, t) => sum + toNumber(t.Amount), 0);
+  const ranked: CongressTrader[] = [];
+  for (const [name, memberTrades] of byMember.entries()) {
+    const returns: { pct: number; weight: number }[] = [];
+    for (const t of memberTrades) {
+      const currentPrice = priceByTicker.get(t.ticker);
+      if (t.tradePrice == null || currentPrice == null) continue;
+      returns.push({ pct: ((currentPrice - t.tradePrice) / t.tradePrice) * 100, weight: t.sizeAmount });
+    }
+    if (returns.length === 0) continue;
+
+    const totalWeight = returns.reduce((sum, r) => sum + r.weight, 0);
     const returnPct =
-      totalAmt === 0
-        ? memberTrades.reduce((sum, t) => sum + toNumber(t.PriceChange), 0) / memberTrades.length
-        : memberTrades.reduce((sum, t) => sum + toNumber(t.PriceChange) * toNumber(t.Amount), 0) / totalAmt;
-    return {
+      totalWeight === 0
+        ? returns.reduce((sum, r) => sum + r.pct, 0) / returns.length
+        : returns.reduce((sum, r) => sum + r.pct * r.weight, 0) / totalWeight;
+
+    ranked.push({
       name,
-      party: memberTrades[0].Party || "?",
-      chamber: memberTrades[0].House || "?",
+      party: memberTrades[0].party,
+      chamber: memberTrades[0].chamber,
       returnPct,
       tradeCount: memberTrades.length,
       topHolding: computeTopHolding(trades, name, cutoff, now),
-    };
-  });
+    });
+  }
 
   ranked.sort((a, b) => b.returnPct - a.returnPct);
   return ranked.slice(0, topN);
-}
-
-export async function getTopCongressTraders(): Promise<CongressTrader[]> {
-  try {
-    const res = await fetch(QUIVER_URL, { headers: { Accept: "application/json" } });
-    if (!res.ok) return [];
-    const trades = (await res.json()) as unknown;
-    if (!Array.isArray(trades)) return [];
-    return computeCongressRanking(trades as RawTrade[]);
-  } catch {
-    return [];
-  }
 }

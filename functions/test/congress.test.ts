@@ -1,149 +1,204 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { computeCongressRanking, getTopCongressTraders } from "../src/lib/congress.js";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+import { describe, it, expect } from "vitest";
+import { parseCapitolTrade, computeCongressRanking, type RawCapitolTrade, type ParsedTrade } from "../src/lib/congress.js";
 
 const NOW = new Date("2026-07-28T12:00:00Z");
 
 function daysAgo(n: number): string {
   const d = new Date(NOW);
   d.setDate(d.getDate() - n);
-  return d.toISOString();
+  const day = d.getUTCDate();
+  const month = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const year = d.getUTCFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function rawTrade(overrides: Partial<RawCapitolTrade> = {}): RawCapitolTrade {
+  return {
+    politician_name: "Alice Example",
+    politician_family: "Democrat House CA",
+    traded_issuer_ticker: "AAPL:US",
+    published: daysAgo(5),
+    traded: daysAgo(5),
+    filed_after: "5 days",
+    owner: "Self",
+    type: "buy",
+    size: "1K–15K",
+    price: "100.00",
+    ...overrides,
+  };
+}
+
+describe("parseCapitolTrade", () => {
+  it("parses a well-formed trade", () => {
+    const result = parseCapitolTrade(rawTrade());
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe("Alice Example");
+    expect(result?.party).toBe("Democrat");
+    expect(result?.chamber).toBe("House");
+    expect(result?.ticker).toBe("AAPL");
+    expect(result?.type).toBe("buy");
+    expect(result?.tradePrice).toBe(100);
+  });
+
+  it("strips the :EXCHANGE suffix from the ticker", () => {
+    const result = parseCapitolTrade(rawTrade({ traded_issuer_ticker: "MSFT:US" }));
+    expect(result?.ticker).toBe("MSFT");
+  });
+
+  it("normalizes type to lowercase buy/sell, defaulting anything else to buy", () => {
+    expect(parseCapitolTrade(rawTrade({ type: "sell" }))?.type).toBe("sell");
+    expect(parseCapitolTrade(rawTrade({ type: "SELL" }))?.type).toBe("sell");
+    expect(parseCapitolTrade(rawTrade({ type: "buy" }))?.type).toBe("buy");
+  });
+
+  it("parses a two-sided size bucket as the midpoint", () => {
+    expect(parseCapitolTrade(rawTrade({ size: "1K–15K" }))?.sizeAmount).toBe(8000);
+    expect(parseCapitolTrade(rawTrade({ size: "1M–5M" }))?.sizeAmount).toBe(3_000_000);
+  });
+
+  it("parses an open-ended size bucket as its lower bound", () => {
+    expect(parseCapitolTrade(rawTrade({ size: "50M+" }))?.sizeAmount).toBe(50_000_000);
+  });
+
+  it("treats a missing or invalid price as null, not zero", () => {
+    expect(parseCapitolTrade(rawTrade({ price: undefined }))?.tradePrice).toBeNull();
+    expect(parseCapitolTrade(rawTrade({ price: "N/A" }))?.tradePrice).toBeNull();
+  });
+
+  it("returns null when politician_name is missing", () => {
+    expect(parseCapitolTrade(rawTrade({ politician_name: undefined }))).toBeNull();
+  });
+
+  it("returns null when traded_issuer_ticker is missing", () => {
+    expect(parseCapitolTrade(rawTrade({ traded_issuer_ticker: undefined }))).toBeNull();
+  });
+
+  it("returns null when the traded date is missing or unparseable", () => {
+    expect(parseCapitolTrade(rawTrade({ traded: undefined }))).toBeNull();
+    expect(parseCapitolTrade(rawTrade({ traded: "not a date" }))).toBeNull();
+  });
+});
+
+function parsedTrade(overrides: Partial<ParsedTrade> = {}): ParsedTrade {
+  return {
+    name: "Alice Example",
+    party: "Democrat",
+    chamber: "House",
+    ticker: "AAPL",
+    type: "buy",
+    sizeAmount: 8000,
+    tradePrice: 100,
+    tradedDate: new Date(NOW.getTime() - 5 * 24 * 60 * 60 * 1000),
+    ...overrides,
+  };
 }
 
 describe("computeCongressRanking", () => {
-  it("excludes trades older than 30 days", () => {
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Bob", Ticker: "TSLA", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(40), Party: "R", House: "Senate", TickerType: "ST", PriceChange: 20 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result.map((r) => r.name)).toEqual(["Alice"]);
-  });
-
-  it("excludes non-purchase transactions from the ranking", () => {
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Sale (Full)", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result).toEqual([]);
-  });
-
-  it("excludes non-ST ticker types (e.g. options)", () => {
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "OP", PriceChange: 5 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result).toEqual([]);
-  });
-
-  it("computes the amount-weighted average return per member", () => {
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 10 },
-      { Representative: "Alice", Ticker: "MSFT", Transaction: "Purchase", Amount: 30000, TransactionDate: daysAgo(3), Party: "D", House: "House", TickerType: "ST", PriceChange: 2 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
+  it("computes a member's return from current price vs. trade price", () => {
+    const trades = [parsedTrade({ tradePrice: 100 })];
+    const prices = new Map([["AAPL", 110]]);
+    const result = computeCongressRanking(trades, prices, NOW);
     expect(result).toHaveLength(1);
-    expect(result[0].returnPct).toBeCloseTo(4, 5); // (10*10000 + 2*30000) / 40000 = 4
-    expect(result[0].tradeCount).toBe(2);
+    expect(result[0].returnPct).toBeCloseTo(10, 5); // (110-100)/100 * 100
   });
 
-  it("falls back to an unweighted average return when total disclosed amount is zero", () => {
+  it("excludes a member entirely when none of their trades have a resolvable price", () => {
+    const trades = [parsedTrade({ ticker: "AAPL", tradePrice: 100 })];
+    const prices = new Map<string, number>(); // no AAPL price available
+    expect(computeCongressRanking(trades, prices, NOW)).toEqual([]);
+  });
+
+  it("excludes trades with a null tradePrice from the return calc, but still counts tradeCount", () => {
     const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 0, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 10 },
-      { Representative: "Alice", Ticker: "MSFT", Transaction: "Purchase", Amount: 0, TransactionDate: daysAgo(3), Party: "D", House: "House", TickerType: "ST", PriceChange: 20 },
+      parsedTrade({ ticker: "AAPL", tradePrice: 100 }),
+      parsedTrade({ ticker: "AAPL", tradePrice: null }),
     ];
-    const result = computeCongressRanking(trades, NOW);
+    const prices = new Map([["AAPL", 110]]);
+    const result = computeCongressRanking(trades, prices, NOW);
+    expect(result[0].returnPct).toBeCloseTo(10, 5); // only the priced trade counts
+    expect(result[0].tradeCount).toBe(2); // both qualifying buys still counted
+  });
+
+  it("weights the average return by size when multiple trades have different sizes", () => {
+    const trades = [
+      parsedTrade({ ticker: "AAPL", tradePrice: 100, sizeAmount: 10000 }), // return 10%
+      parsedTrade({ ticker: "MSFT", tradePrice: 200, sizeAmount: 30000 }), // return 2%
+    ];
+    const prices = new Map([
+      ["AAPL", 110],
+      ["MSFT", 204],
+    ]);
+    const result = computeCongressRanking(trades, prices, NOW);
+    expect(result[0].returnPct).toBeCloseTo((10 * 10000 + 2 * 30000) / 40000, 5); // = 4
+  });
+
+  it("falls back to an unweighted average when total size weight is zero", () => {
+    const trades = [
+      parsedTrade({ ticker: "AAPL", tradePrice: 100, sizeAmount: 0 }), // return 10%
+      parsedTrade({ ticker: "MSFT", tradePrice: 200, sizeAmount: 0 }), // return 20%
+    ];
+    const prices = new Map([
+      ["AAPL", 110],
+      ["MSFT", 240],
+    ]);
+    const result = computeCongressRanking(trades, prices, NOW);
     expect(result[0].returnPct).toBeCloseTo(15, 5); // unweighted average of 10 and 20
+  });
+
+  it("excludes sell trades from the ranking", () => {
+    const trades = [parsedTrade({ type: "sell", tradePrice: 100 })];
+    const prices = new Map([["AAPL", 110]]);
+    expect(computeCongressRanking(trades, prices, NOW)).toEqual([]);
+  });
+
+  it("excludes trades traded more than 30 days ago", () => {
+    const trades = [parsedTrade({ tradedDate: new Date(NOW.getTime() - 40 * 24 * 60 * 60 * 1000) })];
+    const prices = new Map([["AAPL", 110]]);
+    expect(computeCongressRanking(trades, prices, NOW)).toEqual([]);
+  });
+
+  it("excludes trades dated in the future", () => {
+    const trades = [parsedTrade({ tradedDate: new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000) })];
+    const prices = new Map([["AAPL", 110]]);
+    expect(computeCongressRanking(trades, prices, NOW)).toEqual([]);
   });
 
   it("ranks descending by return and limits to topN", () => {
     const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 1000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Bob", Ticker: "TSLA", Transaction: "Purchase", Amount: 1000, TransactionDate: daysAgo(5), Party: "R", House: "Senate", TickerType: "ST", PriceChange: 20 },
-      { Representative: "Carol", Ticker: "NVDA", Transaction: "Purchase", Amount: 1000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 10 },
+      parsedTrade({ name: "Alice", ticker: "AAPL", tradePrice: 100 }), // 5%
+      parsedTrade({ name: "Bob", ticker: "MSFT", tradePrice: 100 }), // 20%
+      parsedTrade({ name: "Carol", ticker: "NVDA", tradePrice: 100 }), // 10%
     ];
-    const result = computeCongressRanking(trades, NOW, 2);
+    const prices = new Map([
+      ["AAPL", 105],
+      ["MSFT", 120],
+      ["NVDA", 110],
+    ]);
+    const result = computeCongressRanking(trades, prices, NOW, 2);
     expect(result.map((r) => r.name)).toEqual(["Bob", "Carol"]);
   });
 
-  it("computes topHolding as the ticker with the largest net positive position", () => {
+  it("computes topHolding from net buy-minus-sell size across both buy and sell trades", () => {
     const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 5000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Alice", Ticker: "MSFT", Transaction: "Purchase", Amount: 20000, TransactionDate: daysAgo(4), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Sale (Partial)", Amount: 3000, TransactionDate: daysAgo(2), Party: "D", House: "House", TickerType: "ST", PriceChange: 0 },
+      parsedTrade({ ticker: "AAPL", type: "buy", sizeAmount: 8000, tradePrice: 100 }),
+      parsedTrade({ ticker: "MSFT", type: "buy", sizeAmount: 32500, tradePrice: 100 }),
+      parsedTrade({ ticker: "AAPL", type: "sell", sizeAmount: 3000 }),
     ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result[0].topHolding).toBe("MSFT"); // net AAPL = 2000, net MSFT = 20000
+    const prices = new Map([
+      ["AAPL", 110],
+      ["MSFT", 110],
+    ]);
+    const result = computeCongressRanking(trades, prices, NOW);
+    expect(result[0].topHolding).toBe("MSFT"); // net AAPL = 5000, net MSFT = 32500
   });
 
-  it("returns a null topHolding when a member has no positive net exposure", () => {
+  it("returns a null topHolding when a member has no positive net position", () => {
     const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 5000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Sale (Full)", Amount: 5000, TransactionDate: daysAgo(2), Party: "D", House: "House", TickerType: "ST", PriceChange: 0 },
+      parsedTrade({ ticker: "AAPL", type: "buy", sizeAmount: 8000, tradePrice: 100 }),
+      parsedTrade({ ticker: "AAPL", type: "sell", sizeAmount: 8000 }),
     ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result).toHaveLength(1); // still ranked (has a qualifying purchase)
+    const prices = new Map([["AAPL", 110]]);
+    const result = computeCongressRanking(trades, prices, NOW);
     expect(result[0].topHolding).toBeNull();
-  });
-
-  it("excludes trades with future TransactionDate from the 30-day window", () => {
-    // A trade dated in the future should not be included in the ranking
-    const futureDate = new Date(NOW);
-    futureDate.setDate(futureDate.getDate() + 5);
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Bob", Ticker: "TSLA", Transaction: "Purchase", Amount: 10000, TransactionDate: futureDate.toISOString(), Party: "R", House: "Senate", TickerType: "ST", PriceChange: 20 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result.map((r) => r.name)).toEqual(["Alice"]);
-  });
-
-  it("correctly identifies topHolding when one ticker has Amount: 0 and another has nonzero Amount", () => {
-    // A member with Amount: 0 purchase on one ticker and Amount: 500 on another
-    // should have the nonzero ticker as topHolding, not the zero-amount one
-    const trades = [
-      { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 0, TransactionDate: daysAgo(5), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-      { Representative: "Alice", Ticker: "MSFT", Transaction: "Purchase", Amount: 500, TransactionDate: daysAgo(4), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-    ];
-    const result = computeCongressRanking(trades, NOW);
-    expect(result).toHaveLength(1);
-    // Without the fix, AAPL gets 0+1000=1000 (via falsy coercion) and wins as topHolding
-    // With the fix, AAPL gets 0 and MSFT gets 500, so MSFT is topHolding
-    expect(result[0].topHolding).toBe("MSFT");
-  });
-});
-
-describe("getTopCongressTraders", () => {
-  it("returns the ranked list on a successful fetch", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => [
-          { Representative: "Alice", Ticker: "AAPL", Transaction: "Purchase", Amount: 10000, TransactionDate: new Date().toISOString(), Party: "D", House: "House", TickerType: "ST", PriceChange: 5 },
-        ],
-      })
-    );
-    const result = await getTopCongressTraders();
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("Alice");
-  });
-
-  it("returns an empty array when the fetch throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network error")));
-    expect(await getTopCongressTraders()).toEqual([]);
-  });
-
-  it("returns an empty array when the response is not ok", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false }));
-    expect(await getTopCongressTraders()).toEqual([]);
-  });
-
-  it("returns an empty array when the response body isn't an array", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ error: "rate limited" }) }));
-    expect(await getTopCongressTraders()).toEqual([]);
   });
 });
