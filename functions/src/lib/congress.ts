@@ -137,3 +137,50 @@ export function computeCongressRanking(
   ranked.sort((a, b) => b.returnPct - a.returnPct);
   return ranked.slice(0, topN);
 }
+
+const CONGRESS_ACTOR_ID = "VyNAX2PeuvQ8UQ7FK";
+
+export interface CongressDeps {
+  runActor: (actorId: string, token: string, input: object) => Promise<unknown[]>;
+  getQuote: (sym: string, key: string) => Promise<{ price: number; changePct: number } | null>;
+  setDoc: (data: { traders: CongressTrader[]; computedAt: number }) => Promise<void>;
+}
+
+export async function runCongressTradersUpdate(
+  secrets: { apifyToken: string; finnhubKey: string },
+  deps: CongressDeps,
+  now: Date = new Date()
+): Promise<void> {
+  let rawItems: unknown[];
+  try {
+    rawItems = await deps.runActor(CONGRESS_ACTOR_ID, secrets.apifyToken, {
+      start_urls: ["https://www.capitoltrades.com/trades?pageSize=96&txDate=90d"],
+      max_page: 1,
+    });
+  } catch (e) {
+    console.error("Congress trades Apify run failed:", e);
+    return; // leave the existing doc untouched
+  }
+
+  const parsed: ParsedTrade[] = [];
+  for (const item of rawItems) {
+    const t = parseCapitolTrade(item as RawCapitolTrade);
+    if (t) parsed.push(t);
+  }
+
+  const tickers = Array.from(new Set(parsed.map((t) => t.ticker)));
+  const priceByTicker = new Map<string, number>();
+  await Promise.all(
+    tickers.map(async (ticker) => {
+      try {
+        const quote = await deps.getQuote(ticker, secrets.finnhubKey);
+        if (quote) priceByTicker.set(ticker, quote.price);
+      } catch {
+        // leave this ticker unpriced -> its trades are excluded from the return calc
+      }
+    })
+  );
+
+  const traders = computeCongressRanking(parsed, priceByTicker, now);
+  await deps.setDoc({ traders, computedAt: Date.now() });
+}

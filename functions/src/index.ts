@@ -7,6 +7,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { runPipeline, type PipelineDeps } from "./lib/pipeline.js";
 import { runActor } from "./lib/apify.js";
+import { runCongressTradersUpdate } from "./lib/congress.js";
 import { extractTickers, videoWrap, marketRecap, marketHealth, quantExplanation } from "./lib/claude.js";
 import { getQuote, getFundamentals, getProfile, getAnalystConsensus, getGeneralNews } from "./lib/finnhub.js";
 import { fredLatest, fredYoY, fredWithPrior } from "./lib/fred.js";
@@ -192,4 +193,21 @@ export const liveQuote = onRequest({ secrets: [finnhubKey] }, async (request, re
   const quote = await getQuote(sym, finnhubKey.value());
   response.json(quote ?? { price: null, changePct: null });
 });
+
+export const congressTradersWeekly = onSchedule(
+  { schedule: "every monday 08:00", timeZone: "America/New_York", secrets: [apifyToken, finnhubKey], timeoutSeconds: 1800, memory: "512MiB" },
+  async () => {
+    const docRef = db.collection("congress").doc("latest");
+    await runCongressTradersUpdate(
+      { apifyToken: apifyToken.value(), finnhubKey: finnhubKey.value() },
+      {
+        runActor,
+        getQuote,
+        setDoc: async (data) => {
+          await docRef.set(data);
+        },
+      }
+    );
+  }
+);
 

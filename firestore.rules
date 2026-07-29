@@ -13,5 +13,9 @@ service cloud.firestore {
     match /config/settings {
       allow read, write: if isOwner();
     }
+
+    match /congress/{docId} {
+      allow read, write: if isOwner();
+    }
   }
 }

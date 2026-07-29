@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseCapitolTrade, computeCongressRanking, type RawCapitolTrade, type ParsedTrade } from "../src/lib/congress.js";
+import { describe, it, expect, vi } from "vitest";
+import { parseCapitolTrade, computeCongressRanking, runCongressTradersUpdate, type RawCapitolTrade, type ParsedTrade } from "../src/lib/congress.js";
 
 const NOW = new Date("2026-07-28T12:00:00Z");
 
@@ -200,5 +200,78 @@ describe("computeCongressRanking", () => {
     const prices = new Map([["AAPL", 110]]);
     const result = computeCongressRanking(trades, prices, NOW);
     expect(result[0].topHolding).toBeNull();
+  });
+});
+
+describe("runCongressTradersUpdate", () => {
+  const secrets = { apifyToken: "at", finnhubKey: "fk" };
+
+  function rawItem(overrides: Partial<RawCapitolTrade> = {}): RawCapitolTrade {
+    return {
+      politician_name: "Alice Example",
+      politician_family: "Democrat House CA",
+      traded_issuer_ticker: "AAPL:US",
+      published: daysAgo(5),
+      traded: daysAgo(5),
+      filed_after: "5 days",
+      owner: "Self",
+      type: "buy",
+      size: "1K–15K",
+      price: "100.00",
+      ...overrides,
+    };
+  }
+
+  it("writes the computed ranking to the doc on success", async () => {
+    const setDoc = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      runActor: vi.fn().mockResolvedValue([rawItem()]),
+      getQuote: vi.fn().mockResolvedValue({ price: 110, changePct: 1 }),
+      setDoc,
+    };
+    await runCongressTradersUpdate(secrets, deps, NOW);
+    expect(setDoc).toHaveBeenCalledTimes(1);
+    const written = setDoc.mock.calls[0][0];
+    expect(written.traders).toHaveLength(1);
+    expect(written.traders[0].name).toBe("Alice Example");
+    expect(typeof written.computedAt).toBe("number");
+  });
+
+  it("leaves the existing doc untouched when the Apify run fails", async () => {
+    const setDoc = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      runActor: vi.fn().mockRejectedValue(new Error("Apify 500")),
+      getQuote: vi.fn(),
+      setDoc,
+    };
+    await runCongressTradersUpdate(secrets, deps, NOW);
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it("dedupes Finnhub calls to one per distinct ticker", async () => {
+    const getQuote = vi.fn().mockResolvedValue({ price: 110, changePct: 1 });
+    const deps = {
+      runActor: vi.fn().mockResolvedValue([
+        rawItem({ politician_name: "Alice Example" }),
+        rawItem({ politician_name: "Bob Example", politician_family: "Republican Senate TX" }),
+      ]),
+      getQuote,
+      setDoc: vi.fn().mockResolvedValue(undefined),
+    };
+    await runCongressTradersUpdate(secrets, deps, NOW);
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(getQuote).toHaveBeenCalledWith("AAPL", "fk");
+  });
+
+  it("excludes a ticker from the ranking when its Finnhub lookup fails, without failing the whole run", async () => {
+    const setDoc = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      runActor: vi.fn().mockResolvedValue([rawItem()]),
+      getQuote: vi.fn().mockRejectedValue(new Error("Finnhub 429")),
+      setDoc,
+    };
+    await runCongressTradersUpdate(secrets, deps, NOW);
+    expect(setDoc).toHaveBeenCalledTimes(1);
+    expect(setDoc.mock.calls[0][0].traders).toEqual([]);
   });
 });

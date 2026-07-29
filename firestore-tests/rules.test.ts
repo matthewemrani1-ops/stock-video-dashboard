@@ -55,3 +55,26 @@ describe("config/settings", () => {
     await assertFails(db.doc("config/settings").set({ trackedHandles: ["a"] }));
   });
 });
+
+describe("congress/{docId}", () => {
+  it("owner can read and write", async () => {
+    const db = testEnv.authenticatedContext(OWNER_UID).firestore();
+    await assertSucceeds(db.doc("congress/latest").set({ traders: [], computedAt: Date.now() }));
+    await assertSucceeds(db.doc("congress/latest").get());
+  });
+
+  it("stranger cannot read", async () => {
+    const db = testEnv.authenticatedContext("someone-else").firestore();
+    await assertFails(db.doc("congress/latest").get());
+  });
+
+  it("stranger cannot write", async () => {
+    const db = testEnv.authenticatedContext("someone-else").firestore();
+    await assertFails(db.doc("congress/latest").set({ traders: [] }));
+  });
+
+  it("unauthenticated cannot read", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(db.doc("congress/latest").get());
+  });
+});
