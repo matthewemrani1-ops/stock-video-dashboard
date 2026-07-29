@@ -45,10 +45,12 @@ describe("parseCapitolTrade", () => {
     expect(result?.ticker).toBe("MSFT");
   });
 
-  it("normalizes type to lowercase buy/sell, defaulting anything else to buy", () => {
+  it("normalizes type case-insensitively, rejecting unrecognized values", () => {
     expect(parseCapitolTrade(rawTrade({ type: "sell" }))?.type).toBe("sell");
     expect(parseCapitolTrade(rawTrade({ type: "SELL" }))?.type).toBe("sell");
     expect(parseCapitolTrade(rawTrade({ type: "buy" }))?.type).toBe("buy");
+    expect(parseCapitolTrade(rawTrade({ type: "exchange" }))).toBeNull();
+    expect(parseCapitolTrade(rawTrade({ type: undefined }))).toBeNull();
   });
 
   it("parses a two-sided size bucket as the midpoint", () => {
@@ -58,6 +60,14 @@ describe("parseCapitolTrade", () => {
 
   it("parses an open-ended size bucket as its lower bound", () => {
     expect(parseCapitolTrade(rawTrade({ size: "50M+" }))?.sizeAmount).toBe(50_000_000);
+  });
+
+  it("tolerates whitespace around the size bucket separator", () => {
+    expect(parseCapitolTrade(rawTrade({ size: "1K – 15K" }))?.sizeAmount).toBe(8000);
+  });
+
+  it("tolerates a currency-symbol prefix on the size bucket", () => {
+    expect(parseCapitolTrade(rawTrade({ size: "$1K–$15K" }))?.sizeAmount).toBe(8000);
   });
 
   it("treats a missing or invalid price as null, not zero", () => {
@@ -273,5 +283,49 @@ describe("runCongressTradersUpdate", () => {
     await runCongressTradersUpdate(secrets, deps, NOW);
     expect(setDoc).toHaveBeenCalledTimes(1);
     expect(setDoc.mock.calls[0][0].traders).toEqual([]);
+  });
+
+  it("caps concurrent Finnhub calls at 10 in-flight at a time", async () => {
+    vi.useFakeTimers();
+    try {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const getQuote = vi.fn().mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+        return { price: 100, changePct: 0 };
+      });
+      const tickers = Array.from({ length: 25 }, (_, i) => `TICK${i}`);
+      const deps = {
+        runActor: vi.fn().mockResolvedValue(
+          tickers.map((t) => rawItem({ traded_issuer_ticker: `${t}:US`, politician_name: t }))
+        ),
+        getQuote,
+        setDoc: vi.fn().mockResolvedValue(undefined),
+      };
+      const runPromise = runCongressTradersUpdate(secrets, deps, NOW);
+      await vi.runAllTimersAsync();
+      await runPromise;
+      expect(getQuote).toHaveBeenCalledTimes(25);
+      expect(maxInFlight).toBeLessThanOrEqual(10);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the existing doc untouched when Apify succeeds but nothing parses (e.g. a schema change)", async () => {
+    const setDoc = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      runActor: vi.fn().mockResolvedValue([
+        rawItem({ politician_name: undefined }),
+        rawItem({ traded_issuer_ticker: undefined }),
+      ]),
+      getQuote: vi.fn(),
+      setDoc,
+    };
+    await runCongressTradersUpdate(secrets, deps, NOW);
+    expect(setDoc).not.toHaveBeenCalled();
   });
 });

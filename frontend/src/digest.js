@@ -189,8 +189,19 @@ async function loadStrip(list, elId) {
 export function watchCongressTraders() {
   return onSnapshot(doc(db, "congress", "latest"), (snap) => {
     const el = document.getElementById("congressStrip");
-    if (!el || !snap.exists()) return;
-    const traders = snap.data().traders || [];
+    const caption = document.getElementById("congressCaption");
+    if (!el) return;
+    if (!snap.exists()) {
+      if (caption) caption.textContent = "No data yet — updates weekly.";
+      return;
+    }
+    const data = snap.data();
+    const traders = data.traders || [];
+    if (traders.length === 0) {
+      el.innerHTML = "";
+      if (caption) caption.textContent = "No qualifying trades found in the last update.";
+      return;
+    }
     el.innerHTML = traders
       .map(
         (t) => `<div class="idx-card">
@@ -201,6 +212,10 @@ export function watchCongressTraders() {
         </div>`
       )
       .join("");
+    if (caption && data.computedAt) {
+      const updated = new Date(data.computedAt).toLocaleDateString([], { month: "short", day: "numeric" });
+      caption.textContent = `Updated ${updated}`;
+    }
   });
 }
 

@@ -38,7 +38,8 @@ function parseSizeBucket(size: string | undefined): number {
   if (!size) return 0;
   const cleaned = size.replace(/,/g, "").trim();
   const parseValue = (s: string): number => {
-    const m = s.match(/^([\d.]+)\s*([KM]?)/i);
+    const cleaned = s.trim().replace(/^[^\d.]+/, "");
+    const m = cleaned.match(/^([\d.]+)\s*([KM]?)/i);
     if (!m) return 0;
     const num = parseFloat(m[1]);
     const mult = m[2].toUpperCase() === "M" ? 1_000_000 : m[2].toUpperCase() === "K" ? 1_000 : 1;
@@ -57,11 +58,14 @@ export function parseCapitolTrade(raw: RawCapitolTrade): ParsedTrade | null {
   const tradedDate = new Date(raw.traded);
   if (isNaN(tradedDate.getTime())) return null;
 
+  const typeRaw = (raw.type || "").toLowerCase();
+  if (typeRaw !== "buy" && typeRaw !== "sell") return null;
+  const type: "buy" | "sell" = typeRaw;
+
   const ticker = raw.traded_issuer_ticker.split(":")[0];
   const familyParts = (raw.politician_family || "").split(/\s+/);
   const party = familyParts[0] || "?";
   const chamber = familyParts[1] || "?";
-  const type: "buy" | "sell" = (raw.type || "").toLowerCase() === "sell" ? "sell" : "buy";
   const sizeAmount = parseSizeBucket(raw.size);
   const priceNum = raw.price ? parseFloat(raw.price) : NaN;
   const tradePrice = !isNaN(priceNum) && priceNum > 0 ? priceNum : null;
@@ -154,7 +158,7 @@ export async function runCongressTradersUpdate(
   let rawItems: unknown[];
   try {
     rawItems = await deps.runActor(CONGRESS_ACTOR_ID, secrets.apifyToken, {
-      start_urls: ["https://www.capitoltrades.com/trades?pageSize=96&txDate=90d"],
+      start_urls: ["https://www.capitoltrades.com/trades?pageSize=96&txDate=30d"],
       max_page: 1,
     });
   } catch (e) {
@@ -168,18 +172,30 @@ export async function runCongressTradersUpdate(
     if (t) parsed.push(t);
   }
 
+  if (rawItems.length > 0 && parsed.length === 0) {
+    console.error("Congress trades: Apify returned data but none of it parsed as a valid trade — likely a schema change. Leaving existing doc untouched.");
+    return;
+  }
+
   const tickers = Array.from(new Set(parsed.map((t) => t.ticker)));
   const priceByTicker = new Map<string, number>();
-  await Promise.all(
-    tickers.map(async (ticker) => {
-      try {
-        const quote = await deps.getQuote(ticker, secrets.finnhubKey);
-        if (quote) priceByTicker.set(ticker, quote.price);
-      } catch {
-        // leave this ticker unpriced -> its trades are excluded from the return calc
-      }
-    })
-  );
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
+    const chunk = tickers.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map(async (ticker) => {
+        try {
+          const quote = await deps.getQuote(ticker, secrets.finnhubKey);
+          if (quote) priceByTicker.set(ticker, quote.price);
+        } catch {
+          // leave this ticker unpriced -> its trades are excluded from the return calc
+        }
+      })
+    );
+    if (i + CHUNK_SIZE < tickers.length) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
 
   const traders = computeCongressRanking(parsed, priceByTicker, now);
   await deps.setDoc({ traders, computedAt: Date.now() });
